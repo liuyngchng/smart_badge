@@ -221,6 +221,19 @@ private fun VisitDetailContent(
             )
         }
 
+        // Full transcript
+        if (visit.transcriptText.isNotBlank()) {
+            Text("录音文本", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+
+            Card(shape = RoundedCornerShape(12.dp)) {
+                Text(
+                    visit.transcriptText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+        }
+
         // AI Summary
         visit.summary?.let { summary ->
             if (summary.topics.isNotEmpty() || summary.conclusions.isNotEmpty() ||
@@ -269,19 +282,6 @@ private fun VisitDetailContent(
                         }
                     }
                 }
-            }
-        }
-
-        // Full transcript
-        if (visit.transcriptText.isNotBlank()) {
-            Text("完整转写", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-
-            Card(shape = RoundedCornerShape(12.dp)) {
-                Text(
-                    visit.transcriptText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(16.dp)
-                )
             }
         }
 

@@ -63,3 +63,6 @@ netstat -tlnp | grep 10095
 
 echo "FunASR service started on port 10095"
 echo "View logs with: docker exec ${CONTAINER_NAME} tail -f /workspace/server.log"
+
+
+docker exec -it myfunasr tail -f /workspace/FunASR/runtime/server.log

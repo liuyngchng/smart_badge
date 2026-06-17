@@ -227,8 +227,13 @@ class RecordingService : Service() {
         locationTracker.stopTracking()
         audioCapture.stopCapture()
         funASRClient.sendEnd()
-        funASRClient.disconnect()
-        recordingJob?.cancel()
+
+        // Wait for offline (second-pass) ASR result to arrive
+        serviceScope.launch {
+            kotlinx.coroutines.delay(3000)
+            funASRClient.disconnect()
+            recordingJob?.cancel()
+        }
 
         _isRecording.value = false
         updateNotification("拜访已结束，正在生成总结...")
