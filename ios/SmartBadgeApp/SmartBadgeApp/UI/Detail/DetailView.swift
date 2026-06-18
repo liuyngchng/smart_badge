@@ -24,6 +24,7 @@ struct DetailView: View {
             }
         }
         .onAppear { viewModel.loadVisit(id: visitId) }
+        .onDisappear { viewModel.audioPlayer.stop() }
     }
 
     private func content(_ visit: Visit) -> some View {
@@ -46,6 +47,11 @@ struct DetailView: View {
                         infoRow("结束时间", formattedDate(end))
                         infoRow("时长", AppTheme.formatDuration(end.timeIntervalSince(visit.startTime)))
                     }
+                }
+
+                // 录音回放
+                if visit.audioFilePath != nil {
+                    audioPlaybackSection
                 }
 
                 // AI 总结
@@ -113,6 +119,82 @@ struct DetailView: View {
                 }
             }
             .padding()
+        }
+    }
+
+    // MARK: - 音频播放区域
+
+    private var audioPlaybackSection: some View {
+        GroupBox(label: Label("录音回放", systemImage: "waveform")) {
+            VStack(spacing: 12) {
+                if viewModel.audioPlayer.isReady {
+                    // 进度条
+                    VStack(spacing: 4) {
+                        Slider(
+                            value: Binding(
+                                get: { viewModel.audioPlayer.currentTime },
+                                set: { viewModel.audioPlayer.seek(to: $0) }
+                            ),
+                            in: 0...max(viewModel.audioPlayer.duration, 0.01)
+                        )
+                        .accentColor(AppTheme.accentColor)
+
+                        // 时间标签
+                        HStack {
+                            Text(viewModel.formatTime(viewModel.audioPlayer.currentTime))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(viewModel.formatTime(viewModel.audioPlayer.duration))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    // 播放控制按钮
+                    HStack(spacing: 30) {
+                        // 后退 15 秒
+                        Button {
+                            viewModel.audioPlayer.seek(
+                                to: viewModel.audioPlayer.currentTime - 15
+                            )
+                        } label: {
+                            Image(systemName: "gobackward.15")
+                                .font(.title2)
+                        }
+
+                        // 播放/暂停
+                        Button {
+                            viewModel.audioPlayer.togglePlayPause()
+                        } label: {
+                            Image(systemName: viewModel.audioPlayer.isPlaying
+                                  ? "pause.circle.fill"
+                                  : "play.circle.fill"
+                            )
+                            .font(.system(size: 44))
+                            .foregroundColor(AppTheme.accentColor)
+                        }
+
+                        // 前进 15 秒
+                        Button {
+                            viewModel.audioPlayer.seek(
+                                to: viewModel.audioPlayer.currentTime + 15
+                            )
+                        } label: {
+                            Image(systemName: "goforward.15")
+                                .font(.title2)
+                        }
+                    }
+                } else {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundColor(.orange)
+                        Text("音频文件不可用")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
         }
     }
 

@@ -33,6 +33,7 @@
 		793370C42FE40E1800752EE2 /* RecordingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370AB2FE40E1700752EE2 /* RecordingManager.swift */; };
 		793370C52FE40E1800752EE2 /* VisitRepositoryImpl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370AE2FE40E1700752EE2 /* VisitRepositoryImpl.swift */; };
 		793370C72FE40E8900752EE2 /* SmartBadgeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370C62FE40E8900752EE2 /* SmartBadgeApp.swift */; };
+		793370C82FE40E9000752EE2 /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370D02FE40E9000752EE2 /* AudioPlayer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -82,6 +83,7 @@
 		793370AB2FE40E1700752EE2 /* RecordingManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = RecordingManager.swift; sourceTree = "<group>"; };
 		793370AE2FE40E1700752EE2 /* VisitRepositoryImpl.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = VisitRepositoryImpl.swift; sourceTree = "<group>"; };
 		793370C62FE40E8900752EE2 /* SmartBadgeApp.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SmartBadgeApp.swift; sourceTree = "<group>"; };
+		793370D02FE40E9000752EE2 /* AudioPlayer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -292,6 +294,7 @@
 			isa = PBXGroup;
 			children = (
 				793370A72FE40E1700752EE2 /* AudioCapture.swift */,
+				793370D02FE40E9000752EE2 /* AudioPlayer.swift */,
 			);
 			path = Audio;
 			sourceTree = "<group>";
@@ -477,6 +480,7 @@
 				793370C72FE40E8900752EE2 /* SmartBadgeApp.swift in Sources */,
 				793370BB2FE40E1800752EE2 /* LocationPoint.swift in Sources */,
 				793370C42FE40E1800752EE2 /* RecordingManager.swift in Sources */,
+				793370C82FE40E9000752EE2 /* AudioPlayer.swift in Sources */,
 				793370B62FE40E1800752EE2 /* DetailViewModel.swift in Sources */,
 				793370BA2FE40E1800752EE2 /* VisitRepository.swift in Sources */,
 				793370BE2FE40E1800752EE2 /* PersistenceController.swift in Sources */,

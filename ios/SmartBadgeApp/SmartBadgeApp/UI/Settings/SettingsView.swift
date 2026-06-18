@@ -38,12 +38,41 @@ struct SettingsView: View {
                         .font(.caption)
                 }
             }
+
+            // 版本号
+            Section {
+                HStack {
+                    Spacer()
+                    Text("版本：\(viewModel.appVersion)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            }
+
+            // 保存状态提示
+            if viewModel.saveConfirmed {
+                Section {
+                    HStack {
+                        Spacer()
+                        Label("已保存", systemImage: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Spacer()
+                    }
+                }
+            }
         }
         .navigationTitle("设置")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button("返回", action: onBack)
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("保存") {
+                    viewModel.save()
+                }
+                .disabled(!viewModel.hasChanges)
             }
         }
     }
