@@ -1,0 +1,42 @@
+import Combine
+import Foundation
+
+@MainActor
+final class HomeViewModel: ObservableObject {
+    @Published var visits: [Visit] = []
+    @Published var isLoading = false
+
+    private let container: AppContainer
+
+    // 统计数据
+    var todayVisitCount: Int {
+        let calendar = Calendar.current
+        return visits.filter { calendar.isDateInToday($0.startTime) }.count
+    }
+
+    var recentVisits: [Visit] {
+        Array(visits.prefix(5))
+    }
+
+    init(container: AppContainer) {
+        self.container = container
+    }
+
+    func loadVisits() {
+        Task {
+            let result = try? await container.visitRepository.getAllVisits()
+            await MainActor.run {
+                visits = result ?? []
+            }
+        }
+    }
+
+    func deleteVisit(id: UUID) {
+        Task {
+            try? await container.visitRepository.deleteVisit(id: id)
+            await MainActor.run {
+                visits.removeAll { $0.id == id }
+            }
+        }
+    }
+}
