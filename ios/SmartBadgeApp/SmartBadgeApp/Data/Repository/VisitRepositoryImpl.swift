@@ -89,6 +89,13 @@ final class VisitRepositoryImpl: VisitRepository {
 
     func deleteVisit(id: UUID) async throws {
         guard let entity = try fetchEntity(id: id) else { return }
+
+        // 清理磁盘上的音频文件和转写文件
+        if let audioPath = entity.audioFilePath, !audioPath.isEmpty {
+            let dir = URL(fileURLWithPath: audioPath).deletingLastPathComponent()
+            try? FileManager.default.removeItem(at: dir)
+        }
+
         context.delete(entity)
         try context.save()
     }

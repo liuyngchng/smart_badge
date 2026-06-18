@@ -38,4 +38,13 @@ final class HistoryViewModel: ObservableObject {
             }
         }
     }
+
+    func deleteVisit(id: UUID) {
+        Task {
+            try? await container.visitRepository.deleteVisit(id: id)
+            await MainActor.run {
+                visits.removeAll { $0.id == id }
+            }
+        }
+    }
 }

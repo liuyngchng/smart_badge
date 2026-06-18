@@ -14,7 +14,7 @@ struct HomeView: View {
                 HStack {
                     StatCard(title: "今日拜访", value: "\(viewModel.todayVisitCount)")
                     Spacer()
-                    StatCard(title: "总记录", value: "\(viewModel.visits.count)")
+                    StatCard(title: "总记录", value: "\(viewModel.totalRecordCount)")
                 }
                 .padding(.vertical, 4)
             }

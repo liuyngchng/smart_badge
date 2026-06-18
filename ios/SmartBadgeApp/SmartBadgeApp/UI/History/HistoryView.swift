@@ -36,6 +36,15 @@ struct HistoryView: View {
                                 showDetail = true
                                 onVisitTap(visit.id)
                             }
+                            .modifier(SwipeActionsModifier {
+                                viewModel.deleteVisit(id: visit.id)
+                            })
+                    }
+                    .onDelete { indexSet in
+                        for index in indexSet {
+                            let visit = viewModel.visits[index]
+                            viewModel.deleteVisit(id: visit.id)
+                        }
                     }
                 }
             }
@@ -155,6 +164,27 @@ private struct iOS14SearchBar: View {
         .onChange(of: localText) { newValue in
             searchQuery = newValue
             if newValue.isEmpty { onChange() }
+        }
+    }
+}
+
+// MARK: - iOS 15+ swipeActions / iOS 14 .onDelete 互补
+
+private struct SwipeActionsModifier: ViewModifier {
+    let onDelete: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 15.0, *) {
+            content
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        onDelete()
+                    } label: {
+                        Label("删除", systemImage: "trash")
+                    }
+                }
+        } else {
+            content
         }
     }
 }

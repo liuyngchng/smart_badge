@@ -8,10 +8,23 @@ final class HomeViewModel: ObservableObject {
 
     private let container: AppContainer
 
+    /// 有录音文件的记录（真正完成了录音的拜访）
+    private var recordedVisits: [Visit] {
+        visits.filter { visit in
+            guard let path = visit.audioFilePath, !path.isEmpty else { return false }
+            return FileManager.default.fileExists(atPath: path)
+        }
+    }
+
     // 统计数据
     var todayVisitCount: Int {
         let calendar = Calendar.current
-        return visits.filter { calendar.isDateInToday($0.startTime) }.count
+        return recordedVisits.filter { calendar.isDateInToday($0.startTime) }.count
+    }
+
+    /// 总录音记录数
+    var totalRecordCount: Int {
+        recordedVisits.count
     }
 
     var recentVisits: [Visit] {
