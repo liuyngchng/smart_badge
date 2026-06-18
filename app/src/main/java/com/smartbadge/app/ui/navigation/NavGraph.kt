@@ -37,9 +37,10 @@ fun NavGraph(navController: NavHostController) {
         composable(Routes.RECORDING) {
             RecordingScreen(
                 onBack = { navController.popBackStack() },
-                onVisitComplete = { visitId ->
-                    navController.popBackStack()
-                    navController.navigate(Routes.detail(visitId))
+                onVisitComplete = { _ ->
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(Routes.RECORDING) { inclusive = true }
+                    }
                 }
             )
         }

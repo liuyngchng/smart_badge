@@ -2,6 +2,13 @@ package com.smartbadge.app.domain.model
 
 import java.time.Instant
 
+enum class ProcessingStatus {
+    PENDING,
+    PROCESSING,
+    COMPLETED,
+    UNAVAILABLE
+}
+
 data class Visit(
     val id: Long = 0,
     val clientName: String,
@@ -12,8 +19,11 @@ data class Visit(
     val endTime: Instant? = null,
     val locationPoints: List<LocationPoint> = emptyList(),
     val transcriptText: String = "",
+    val transcriptStatus: ProcessingStatus = ProcessingStatus.PENDING,
     val summary: VisitSummary? = null,
+    val summaryStatus: ProcessingStatus = ProcessingStatus.PENDING,
     val audioFilePath: String = "",
+    val transcriptFilePath: String = "",
     val createdAt: Instant = Instant.now()
 )
 

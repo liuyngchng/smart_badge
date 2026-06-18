@@ -16,7 +16,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 
 data class AppSettings(
     val asrUrl: String = "ws://192.168.27.29:10095",
-    val llmUrl: String = "https://api.deepseek.com/chat/completions",
+    val llmUrl: String = "https://api.deepseek.com",
     val llmKey: String = "sk-0220a5e0d8ff4d39828859be52563df1",
     val llmModel: String = "deepseek-v4-pro",
     val llmPrompt: String = ""
@@ -37,7 +37,7 @@ class SettingsDataStore @Inject constructor(
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { prefs ->
         AppSettings(
             asrUrl = prefs[Keys.ASR_URL] ?: "ws://192.168.27.29:10095",
-            llmUrl = prefs[Keys.LLM_URL] ?: "https://api.deepseek.com/v1/chat/completions",
+            llmUrl = prefs[Keys.LLM_URL] ?: "https://api.deepseek.com",
             llmKey = prefs[Keys.LLM_KEY] ?: "sk-0220a5e0d8ff4d39828859be52563df1",
             llmModel = prefs[Keys.LLM_MODEL] ?: "deepseek-v4-pro",
             llmPrompt = prefs[Keys.LLM_PROMPT] ?: ""

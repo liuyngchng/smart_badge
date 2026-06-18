@@ -67,6 +67,9 @@ class ConnectivityChecker @Inject constructor() {
         if (url.isBlank()) return@withContext Result.failure(Exception("API 地址不能为空"))
         if (apiKey.isBlank()) return@withContext Result.failure(Exception("API Key 不能为空"))
 
+        val fullUrl = if (url.contains("/chat/completions")) url
+            else "${url.trimEnd('/')}/v1/chat/completions"
+
         val client = OkHttpClient.Builder()
             .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
@@ -86,7 +89,7 @@ class ConnectivityChecker @Inject constructor() {
 
             val requestBody = gson.toJson(body).toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
-                .url(url)
+                .url(fullUrl)
                 .addHeader("Authorization", "Bearer $apiKey")
                 .post(requestBody)
                 .build()

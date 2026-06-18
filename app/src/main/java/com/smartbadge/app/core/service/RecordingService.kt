@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.smartbadge.app.MainActivity
 import com.smartbadge.app.core.asr.AsrEvent
@@ -47,6 +48,7 @@ class RecordingService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var recordingJob: Job? = null
     private var locationJob: Job? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     private val mutableTranscript = StringBuilder()
     private val locationPoints = mutableListOf<LocationPoint>()
@@ -120,6 +122,13 @@ class RecordingService : Service() {
         _transcriptState.value = ""
         _durationSeconds.value = 0
 
+        // Acquire wake lock to keep CPU awake during recording
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "SmartBadge:RecordingWakeLock"
+        ).apply { acquire() }
+
         // Start foreground
         startForeground(NOTIFICATION_ID, buildNotification("拜访录音中..."))
 
@@ -127,10 +136,15 @@ class RecordingService : Service() {
         audioFileManager.startNewRecording(visitId, java.time.Instant.now())
 
         // Duration counter
+        var batteryWarned = false
         durationJob = serviceScope.launch {
             while (true) {
                 kotlinx.coroutines.delay(1000)
                 _durationSeconds.value += 1
+                if (!batteryWarned && _durationSeconds.value >= 3600L) {
+                    batteryWarned = true
+                    updateNotification("电量提醒：已持续录音1小时，请注意电量")
+                }
             }
         }
 
@@ -181,42 +195,44 @@ class RecordingService : Service() {
         serviceScope.launch {
             recordingJob?.join()
 
-            // Save final transcript
-            val transcript = mutableTranscript.toString()
-            visitRepository.updateTranscript(currentVisitId, transcript)
+            // Finalize audio file immediately and update visit so UI shows it right away
+            val audioFilePath = audioFileManager.finalizeRecording()
+            visitRepository.updateAudioFilePath(currentVisitId, audioFilePath, java.time.Instant.now(), locationPoints.toList())
 
-            // Generate summary
-            if (transcript.isNotBlank() && llmUrl.isNotBlank()) {
-                val result = llmClient.generateSummary(
-                    transcript = transcript,
-                    apiUrl = llmUrl,
-                    apiKey = llmKey,
-                    model = llmModel,
-                    customPrompt = llmPrompt
-                )
-                result.onSuccess { summary ->
-                    visitRepository.updateSummary(currentVisitId, summary)
-                }
+            // Build transcript — retry offline ASR if real-time was blank
+            var transcript = mutableTranscript.toString()
+            val fallbackText = "服务暂时不可用，请采用离线方式"
+
+            if (transcript.isBlank() && audioFilePath.isNotBlank() && asrUrl.isNotBlank()) {
+                visitRepository.updateTranscriptStatus(currentVisitId, com.smartbadge.app.domain.model.ProcessingStatus.PROCESSING)
+                val retryResult = retryAsrWithBackoff(audioFilePath, asrUrl)
+                transcript = retryResult.getOrDefault(fallbackText)
+            } else if (transcript.isBlank()) {
+                transcript = fallbackText
             }
 
-            // Finalize audio file
-            val audioFilePath = audioFileManager.finalizeRecording()
+            val transcriptFilePath = audioFileManager.finalizeTranscript(transcript)
+            visitRepository.updateTranscriptWithFile(currentVisitId, transcript, transcriptFilePath)
+            visitRepository.updateTranscriptStatus(
+                currentVisitId,
+                if (transcript == fallbackText) com.smartbadge.app.domain.model.ProcessingStatus.UNAVAILABLE
+                else com.smartbadge.app.domain.model.ProcessingStatus.COMPLETED
+            )
 
-            // Finalize visit
-            val visit = visitRepository.getVisitById(currentVisitId)
-            if (visit != null) {
-                visitRepository.updateVisit(
-                    visit.copy(
-                        endTime = java.time.Instant.now(),
-                        locationPoints = locationPoints.toList(),
-                        transcriptText = transcript,
-                        audioFilePath = audioFilePath
-                    )
-                )
+            if (transcript != fallbackText && llmUrl.isNotBlank()) {
+                visitRepository.updateSummaryStatus(currentVisitId, com.smartbadge.app.domain.model.ProcessingStatus.PROCESSING)
+                val summaryResult = retryLlmWithBackoff(transcript, llmUrl, llmKey, llmModel, llmPrompt)
+                summaryResult.onSuccess { summary ->
+                    visitRepository.updateSummary(currentVisitId, summary)
+                }
+                if (summaryResult.isFailure) {
+                    visitRepository.updateSummaryStatus(currentVisitId, com.smartbadge.app.domain.model.ProcessingStatus.UNAVAILABLE)
+                }
             }
 
             _isRecording.value = false
             stopForeground(STOP_FOREGROUND_REMOVE)
+            releaseWakeLock()
             stopSelf()
         }
     }
@@ -228,7 +244,7 @@ class RecordingService : Service() {
         audioCapture.stopCapture()
         funASRClient.sendEnd()
 
-        // Wait for offline (second-pass) ASR result to arrive
+        // Wait for offline (second-pass) ASR result to arrive, then disconnect
         serviceScope.launch {
             kotlinx.coroutines.delay(3000)
             funASRClient.disconnect()
@@ -280,5 +296,73 @@ class RecordingService : Service() {
         }
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(channel)
+    }
+
+    private suspend fun retryAsrWithBackoff(audioFilePath: String, asrUrl: String): Result<String> {
+        val delays = listOf(20_000L, 40_000L, 80_000L, 160_000L, 320_000L)
+        var lastError: Throwable? = null
+
+        for ((index, delay) in delays.withIndex()) {
+            if (index > 0) {
+                Log.i("RecordingService", "ASR retry ${index + 1}/${delays.size} after ${delay}ms")
+                kotlinx.coroutines.delay(delay)
+            }
+
+            val result = funASRClient.processFile(audioFilePath, asrUrl)
+            if (result.isSuccess) {
+                Log.i("RecordingService", "ASR retry ${index + 1} succeeded")
+                return result
+            }
+            lastError = result.exceptionOrNull()
+            Log.w("RecordingService", "ASR retry ${index + 1}/${delays.size} failed: ${lastError?.message}")
+        }
+
+        return Result.failure(lastError ?: Exception("All ASR retries exhausted"))
+    }
+
+    private suspend fun retryLlmWithBackoff(
+        transcript: String,
+        llmUrl: String,
+        llmKey: String,
+        llmModel: String,
+        llmPrompt: String?
+    ): Result<com.smartbadge.app.domain.model.VisitSummary> {
+        val delays = listOf(20_000L, 40_000L, 80_000L, 160_000L, 320_000L)
+        var lastError: Throwable? = null
+
+        for ((index, delay) in delays.withIndex()) {
+            if (index > 0) {
+                Log.i("RecordingService", "LLM retry ${index + 1}/${delays.size} after ${delay}ms")
+                kotlinx.coroutines.delay(delay)
+            }
+
+            val result = llmClient.generateSummary(
+                transcript = transcript,
+                apiUrl = llmUrl,
+                apiKey = llmKey,
+                model = llmModel,
+                customPrompt = llmPrompt
+            )
+            if (result.isSuccess) {
+                Log.i("RecordingService", "LLM retry ${index + 1} succeeded")
+                return result
+            }
+            lastError = result.exceptionOrNull()
+            Log.w("RecordingService", "LLM retry ${index + 1}/${delays.size} failed: ${lastError?.message}")
+        }
+
+        return Result.failure(lastError ?: Exception("All LLM retries exhausted"))
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) it.release()
+        }
+        wakeLock = null
+    }
+
+    override fun onDestroy() {
+        releaseWakeLock()
+        super.onDestroy()
     }
 }

@@ -3,6 +3,7 @@ package com.smartbadge.app.ui.detail
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.net.Uri
 import androidx.core.content.FileProvider
@@ -34,7 +35,9 @@ data class DetailUiState(
     val playbackDurationFormatted: String = "00:00",
     val showDeleteConfirm: Boolean = false,
     val isDeleting: Boolean = false,
-    val isDeleted: Boolean = false
+    val isDeleted: Boolean = false,
+    val showTranscriptPreview: Boolean = false,
+    val aiSummaryExpanded: Boolean = false
 )
 
 @HiltViewModel
@@ -54,11 +57,33 @@ class DetailViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = DetailUiState(isLoading = true)
             try {
-                val visit = visitRepository.getVisitById(visitId)
-                _uiState.value = DetailUiState(visit = visit, isLoading = false)
+                visitRepository.getVisitByIdFlow(visitId).collect { visit ->
+                    val duration = getFileDuration(visit?.audioFilePath)
+                    _uiState.value = DetailUiState(
+                        visit = visit,
+                        isLoading = false,
+                        playbackDurationFormatted = duration
+                    )
+                }
             } catch (e: Exception) {
                 _uiState.value = DetailUiState(isLoading = false, error = e.message)
             }
+        }
+    }
+
+    private fun getFileDuration(filePath: String?): String {
+        if (filePath.isNullOrBlank()) return "00:00"
+        val file = File(filePath)
+        if (!file.exists()) return "00:00"
+        return try {
+            val retriever = MediaMetadataRetriever()
+            retriever.use {
+                it.setDataSource(filePath)
+                val durationMs = it.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0
+                formatDuration(durationMs / 1000L)
+            }
+        } catch (_: Exception) {
+            "00:00"
         }
     }
 
@@ -163,6 +188,18 @@ class DetailViewModel @Inject constructor(
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(error = "分享失败")
         }
+    }
+
+    fun openTranscriptPreview() {
+        _uiState.value = _uiState.value.copy(showTranscriptPreview = true)
+    }
+
+    fun dismissTranscriptPreview() {
+        _uiState.value = _uiState.value.copy(showTranscriptPreview = false)
+    }
+
+    fun toggleAiSummary() {
+        _uiState.value = _uiState.value.copy(aiSummaryExpanded = !_uiState.value.aiSummaryExpanded)
     }
 
     fun showDeleteConfirm() {

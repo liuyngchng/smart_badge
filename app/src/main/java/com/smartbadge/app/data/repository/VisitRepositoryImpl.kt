@@ -29,6 +29,9 @@ class VisitRepositoryImpl @Inject constructor(
     override suspend fun getVisitById(id: Long): Visit? =
         visitDao.getById(id)?.toDomain()
 
+    override fun getVisitByIdFlow(id: Long): Flow<Visit?> =
+        visitDao.getByIdFlow(id).map { it?.toDomain() }
+
     override suspend fun createVisit(visit: Visit): Long =
         visitDao.insert(VisitEntity.fromDomain(visit))
 
@@ -41,6 +44,11 @@ class VisitRepositoryImpl @Inject constructor(
         visitDao.update(entity.copy(transcriptText = text))
     }
 
+    override suspend fun updateTranscriptWithFile(id: Long, text: String, transcriptFilePath: String) {
+        val entity = visitDao.getById(id) ?: return
+        visitDao.update(entity.copy(transcriptText = text, transcriptFilePath = transcriptFilePath))
+    }
+
     override suspend fun updateSummary(id: Long, summary: VisitSummary) {
         val entity = visitDao.getById(id) ?: return
         visitDao.update(
@@ -48,7 +56,29 @@ class VisitRepositoryImpl @Inject constructor(
                 topicsJson = com.google.gson.Gson().toJson(summary.topics),
                 conclusionsJson = com.google.gson.Gson().toJson(summary.conclusions),
                 todosJson = com.google.gson.Gson().toJson(summary.todos),
-                nextSteps = summary.nextSteps
+                nextSteps = summary.nextSteps,
+                summaryStatus = com.smartbadge.app.domain.model.ProcessingStatus.COMPLETED.name
+            )
+        )
+    }
+
+    override suspend fun updateTranscriptStatus(id: Long, status: com.smartbadge.app.domain.model.ProcessingStatus) {
+        val entity = visitDao.getById(id) ?: return
+        visitDao.update(entity.copy(transcriptStatus = status.name))
+    }
+
+    override suspend fun updateSummaryStatus(id: Long, status: com.smartbadge.app.domain.model.ProcessingStatus) {
+        val entity = visitDao.getById(id) ?: return
+        visitDao.update(entity.copy(summaryStatus = status.name))
+    }
+
+    override suspend fun updateAudioFilePath(id: Long, path: String, endTime: java.time.Instant, locationPoints: List<com.smartbadge.app.domain.model.LocationPoint>) {
+        val entity = visitDao.getById(id) ?: return
+        visitDao.update(
+            entity.copy(
+                audioFilePath = path,
+                endTime = endTime.toEpochMilli(),
+                locationPointsJson = com.google.gson.Gson().toJson(locationPoints)
             )
         )
     }

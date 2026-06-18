@@ -49,7 +49,7 @@ class HomeViewModel @Inject constructor(
                 _uiState.value = HomeUiState(
                     todayVisitCount = todayVisits.size,
                     todayTotalMinutes = todayMinutes,
-                    recentVisits = visits.take(20),
+                    recentVisits = visits.take(2),
                     isLoading = false
                 )
             }

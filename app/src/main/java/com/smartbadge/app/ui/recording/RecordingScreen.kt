@@ -304,12 +304,13 @@ fun RecordingScreen(
                     }
                 }
 
-                // Navigate to detail when recording stops
-                LaunchedEffect(uiState.isRecording, uiState.isStopping) {
-                    if (!uiState.isRecording && !uiState.isStopping && uiState.currentVisitId > 0) {
-                        onVisitComplete(uiState.currentVisitId)
-                    }
                 }
+        }
+
+        // Navigate when recording stops
+        LaunchedEffect(uiState.isRecording, uiState.isStopping) {
+            if (!uiState.isRecording && !uiState.isStopping && uiState.currentVisitId > 0) {
+                onVisitComplete(uiState.currentVisitId)
             }
         }
     }

@@ -20,15 +20,17 @@ class AudioFileManager @Inject constructor(
     private var outputStream: FileOutputStream? = null
     private var pcmFile: File? = null
     private var visitAudioDir: File? = null
+    private var currentBaseName: String? = null
 
     fun startNewRecording(visitId: Long, startTime: Instant) {
         val audioDir = File(context.filesDir, "audio/visit_$visitId")
         audioDir.mkdirs()
         visitAudioDir = audioDir
 
-        val fileName = dateFormatter.format(startTime) + ".wav"
-        pcmFile = File(audioDir, "${fileName}.pcm")
-        outputStream = FileOutputStream(pcmFile)
+        currentBaseName = dateFormatter.format(startTime)
+        val pcm = File(audioDir, "${currentBaseName}.wav.pcm")
+        pcmFile = pcm
+        outputStream = FileOutputStream(pcm)
     }
 
     fun writeAudioChunk(data: ByteArray) {
@@ -40,7 +42,8 @@ class AudioFileManager @Inject constructor(
         outputStream = null
 
         val pcm = pcmFile ?: return ""
-        val wavFile = File(visitAudioDir, pcm.nameWithoutExtension)
+        val baseName = currentBaseName ?: return ""
+        val wavFile = File(visitAudioDir, "$baseName.wav")
 
         val pcmLength = pcm.length()
         val dataSize = pcmLength.toInt()
@@ -74,10 +77,20 @@ class AudioFileManager @Inject constructor(
         return wavFile.absolutePath
     }
 
+    fun finalizeTranscript(text: String): String {
+        if (text.isBlank() || visitAudioDir == null || currentBaseName == null) return ""
+        val txtFile = File(visitAudioDir, "${currentBaseName}.txt")
+        txtFile.writeText(text)
+        return txtFile.absolutePath
+    }
+
     fun deleteAudioFile(audioFilePath: String) {
         if (audioFilePath.isBlank()) return
         val file = File(audioFilePath)
         if (file.exists()) file.delete()
+        // Delete corresponding transcript file
+        val txtFile = File(file.absolutePath.replace(".wav", ".txt"))
+        if (txtFile.exists()) txtFile.delete()
         file.parentFile?.delete() // remove empty directory
     }
 

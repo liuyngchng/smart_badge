@@ -1,5 +1,9 @@
 package com.smartbadge.app.ui.detail
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,9 +20,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
@@ -35,9 +42,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -47,12 +54,15 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.smartbadge.app.domain.model.Visit
+import java.io.File
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -64,7 +74,7 @@ fun DetailScreen(
     viewModel: DetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val snackbarHostState = androidx.compose.runtime.remember { SnackbarHostState() }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(visitId) {
         viewModel.loadVisit(visitId)
@@ -128,10 +138,13 @@ fun DetailScreen(
                     playbackProgress = uiState.playbackProgress,
                     playbackPositionFormatted = uiState.playbackPositionFormatted,
                     playbackDurationFormatted = uiState.playbackDurationFormatted,
+                    aiSummaryExpanded = uiState.aiSummaryExpanded,
                     onPlayPause = viewModel::playPause,
                     onSeek = viewModel::seekTo,
                     onShare = viewModel::shareAudio,
                     onDelete = viewModel::showDeleteConfirm,
+                    onTranscriptClick = viewModel::openTranscriptPreview,
+                    onToggleAiSummary = viewModel::toggleAiSummary,
                     modifier = Modifier.padding(padding)
                 )
             }
@@ -163,6 +176,48 @@ fun DetailScreen(
             }
         )
     }
+
+    // Transcript preview dialog
+    if (uiState.showTranscriptPreview) {
+        val visit = uiState.visit
+        val text = visit?.transcriptText ?: ""
+        val status = visit?.transcriptStatus ?: com.smartbadge.app.domain.model.ProcessingStatus.PENDING
+        AlertDialog(
+            onDismissRequest = viewModel::dismissTranscriptPreview,
+            title = { Text("录音文本") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    when (status) {
+                        com.smartbadge.app.domain.model.ProcessingStatus.PENDING -> {
+                            StatusPlaceholder("转录尚未开始")
+                        }
+                        com.smartbadge.app.domain.model.ProcessingStatus.PROCESSING -> {
+                            StatusProcessing("转录处理中...")
+                        }
+                        com.smartbadge.app.domain.model.ProcessingStatus.UNAVAILABLE -> {
+                            StatusPlaceholder("服务暂时不可用，请采用离线方式")
+                        }
+                        com.smartbadge.app.domain.model.ProcessingStatus.COMPLETED -> {
+                            if (text.isBlank()) {
+                                StatusPlaceholder("无有效信息")
+                            } else {
+                                Text(text, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::dismissTranscriptPreview) {
+                    Text("关闭")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -172,10 +227,13 @@ private fun VisitDetailContent(
     playbackProgress: Float,
     playbackPositionFormatted: String,
     playbackDurationFormatted: String,
+    aiSummaryExpanded: Boolean,
     onPlayPause: () -> Unit,
     onSeek: (Float) -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
+    onTranscriptClick: () -> Unit,
+    onToggleAiSummary: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val timeFormatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss").withZone(ZoneId.systemDefault())
@@ -185,7 +243,7 @@ private fun VisitDetailContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // Basic info
-        Card(shape = RoundedCornerShape(12.dp)) {
+        Card(shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(visit.clientName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 if (visit.clientCompany.isNotBlank()) {
@@ -207,7 +265,7 @@ private fun VisitDetailContent(
             }
         }
 
-        // Audio recording (if exists)
+        // Audio recording (always show if file exists)
         if (visit.audioFilePath.isNotBlank()) {
             AudioPlayerSection(
                 playbackState = playbackState,
@@ -221,64 +279,102 @@ private fun VisitDetailContent(
             )
         }
 
-        // Full transcript
-        if (visit.transcriptText.isNotBlank()) {
-            Text("录音文本", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        // Transcript section
+        Text("录音文本", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
-            Card(shape = RoundedCornerShape(12.dp)) {
-                Text(
-                    visit.transcriptText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
+        TranscriptCard(
+            visit = visit,
+            onClick = onTranscriptClick
+        )
+
+        // AI Summary section
+        val summary = visit.summary
+        val hasSummaryContent = summary != null && (
+            summary.topics.isNotEmpty() || summary.conclusions.isNotEmpty() ||
+            summary.todos.isNotEmpty() || summary.nextSteps.isNotBlank()
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggleAiSummary),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("AI 总结", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.weight(1f))
+            Icon(
+                imageVector = if (aiSummaryExpanded) Icons.Default.ExpandLess else Icons.Default.ArrowDropDown,
+                contentDescription = if (aiSummaryExpanded) "收起" else "展开",
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+            )
         }
 
-        // AI Summary
-        visit.summary?.let { summary ->
-            if (summary.topics.isNotEmpty() || summary.conclusions.isNotEmpty() ||
-                summary.todos.isNotEmpty() || summary.nextSteps.isNotBlank()) {
-
-                Text("AI 总结", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-
-                Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-
-                        if (summary.topics.isNotEmpty()) {
-                            SectionHeader(Icons.Default.Topic, "会谈议题")
-                            summary.topics.forEach { topic ->
-                                Text("• $topic", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
-                            }
-                        }
-
-                        if (summary.conclusions.isNotEmpty()) {
-                            HorizontalDivider()
-                            SectionHeader(Icons.Default.CheckCircle, "关键结论")
-                            summary.conclusions.forEach { conclusion ->
-                                Text("• $conclusion", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
-                            }
-                        }
-
-                        if (summary.todos.isNotEmpty()) {
-                            HorizontalDivider()
-                            SectionHeader(Icons.Default.ChevronRight, "待办事项")
-                            summary.todos.forEach { todo ->
-                                Row(modifier = Modifier.padding(start = 8.dp)) {
-                                    Text("• ${todo.task}", style = MaterialTheme.typography.bodyMedium)
-                                    if (todo.owner.isNotBlank()) {
-                                        Text(" (@${todo.owner})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                                    }
-                                    if (todo.deadline.isNotBlank()) {
-                                        Text(" ${todo.deadline}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        AnimatedVisibility(
+            visible = aiSummaryExpanded,
+            enter = expandVertically(),
+            exit = shrinkVertically()
+        ) {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                )
+            ) {
+                when (visit.summaryStatus) {
+                    com.smartbadge.app.domain.model.ProcessingStatus.PENDING -> {
+                        StatusPlaceholder("AI 总结尚未开始")
+                    }
+                    com.smartbadge.app.domain.model.ProcessingStatus.PROCESSING -> {
+                        StatusProcessing("AI 总结处理中...")
+                    }
+                    com.smartbadge.app.domain.model.ProcessingStatus.UNAVAILABLE -> {
+                        StatusPlaceholder("服务不可用，无法生成总结")
+                    }
+                    com.smartbadge.app.domain.model.ProcessingStatus.COMPLETED -> {
+                        if (hasSummaryContent) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                if (summary!!.topics.isNotEmpty()) {
+                                    SectionHeader(Icons.Default.Topic, "会谈议题")
+                                    summary.topics.forEach { topic ->
+                                        Text("• $topic", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
                                     }
                                 }
-                            }
-                        }
 
-                        if (summary.nextSteps.isNotBlank()) {
-                            HorizontalDivider()
-                            SectionHeader(Icons.Default.Lightbulb, "下一步计划")
-                            Text(summary.nextSteps, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
+                                if (summary.conclusions.isNotEmpty()) {
+                                    HorizontalDivider()
+                                    SectionHeader(Icons.Default.CheckCircle, "关键结论")
+                                    summary.conclusions.forEach { conclusion ->
+                                        Text("• $conclusion", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
+                                    }
+                                }
+
+                                if (summary.todos.isNotEmpty()) {
+                                    HorizontalDivider()
+                                    SectionHeader(Icons.Default.ChevronRight, "待办事项")
+                                    summary.todos.forEach { todo ->
+                                        Row(modifier = Modifier.padding(start = 8.dp)) {
+                                            Text("• ${todo.task}", style = MaterialTheme.typography.bodyMedium)
+                                            if (todo.owner.isNotBlank()) {
+                                                Text(" (@${todo.owner})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                                            }
+                                            if (todo.deadline.isNotBlank()) {
+                                                Text(" ${todo.deadline}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (summary.nextSteps.isNotBlank()) {
+                                    HorizontalDivider()
+                                    SectionHeader(Icons.Default.Lightbulb, "下一步计划")
+                                    Text(summary.nextSteps, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
+                                }
+                            }
+                        } else {
+                            StatusPlaceholder("无有效信息")
                         }
                     }
                 }
@@ -371,6 +467,104 @@ private fun SectionHeader(icon: androidx.compose.ui.graphics.vector.ImageVector,
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 4.dp))
         Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+    }
+}
+
+@Composable
+private fun TranscriptCard(
+    visit: Visit,
+    onClick: () -> Unit
+) {
+    val fileName = if (visit.transcriptFilePath.isNotBlank()) {
+        File(visit.transcriptFilePath).name
+    } else {
+        "录音文本.txt"
+    }
+
+    val subtitle = when (visit.transcriptStatus) {
+        com.smartbadge.app.domain.model.ProcessingStatus.PENDING -> "转录尚未开始"
+        com.smartbadge.app.domain.model.ProcessingStatus.PROCESSING -> "转录处理中..."
+        com.smartbadge.app.domain.model.ProcessingStatus.UNAVAILABLE -> "服务暂时不可用，请采用离线方式"
+        com.smartbadge.app.domain.model.ProcessingStatus.COMPLETED -> "点击查看全文"
+    }
+
+    val enabled = visit.transcriptStatus == com.smartbadge.app.domain.model.ProcessingStatus.COMPLETED
+
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.clickable(enabled = enabled, onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (visit.transcriptStatus == com.smartbadge.app.domain.model.ProcessingStatus.PROCESSING) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Icon(
+                    Icons.Default.Description,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    fileName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusPlaceholder(text: String) {
+    Box(
+        modifier = Modifier.fillMaxWidth().padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+        )
+    }
+}
+
+@Composable
+private fun StatusProcessing(text: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(24.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(16.dp),
+            strokeWidth = 2.dp
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+        )
     }
 }
 

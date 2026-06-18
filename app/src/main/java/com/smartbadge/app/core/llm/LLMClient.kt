@@ -25,6 +25,11 @@ class LLMClient @Inject constructor() {
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
+    companion object {
+        private const val MAX_CHUNK_CHARS = 6000
+        private const val CHUNK_OVERLAP = 300
+    }
+
     suspend fun generateSummary(
         transcript: String,
         apiUrl: String,
@@ -33,8 +38,31 @@ class LLMClient @Inject constructor() {
         customPrompt: String? = null
     ): Result<VisitSummary> = withContext(Dispatchers.IO) {
         try {
-            val systemPrompt = customPrompt ?: buildDefaultPrompt()
+            val fullUrl = if (apiUrl.contains("/chat/completions")) apiUrl
+                else "${apiUrl.trimEnd('/')}/v1/chat/completions"
 
+            if (transcript.length > MAX_CHUNK_CHARS) {
+                return@withContext generateChunkedSummary(fullUrl, apiKey, model, customPrompt, transcript)
+            }
+
+            val systemPrompt = customPrompt ?: buildDefaultPrompt()
+            val userContent = "以下是客户拜访的对话转写文本，请提取结构化信息：\n\n$transcript"
+            val result = callLlm(fullUrl, apiKey, model, systemPrompt, userContent)
+            if (result.isFailure) return@withContext Result.failure(result.exceptionOrNull()!!)
+            Result.success(parseResponse(result.getOrThrow()))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun callLlm(
+        fullUrl: String,
+        apiKey: String,
+        model: String,
+        systemPrompt: String,
+        userContent: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
             val messages = JsonArray().apply {
                 add(JsonObject().apply {
                     addProperty("role", "system")
@@ -42,7 +70,7 @@ class LLMClient @Inject constructor() {
                 })
                 add(JsonObject().apply {
                     addProperty("role", "user")
-                    addProperty("content", "以下是客户拜访的对话转写文本，请提取结构化信息：\n\n$transcript")
+                    addProperty("content", userContent)
                 })
             }
 
@@ -57,7 +85,7 @@ class LLMClient @Inject constructor() {
 
             val requestBody = gson.toJson(body).toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
-                .url(apiUrl)
+                .url(fullUrl)
                 .addHeader("Authorization", "Bearer $apiKey")
                 .post(requestBody)
                 .build()
@@ -70,22 +98,73 @@ class LLMClient @Inject constructor() {
                 return@withContext Result.failure(Exception("LLM API error: ${response.code} $responseBody"))
             }
 
-            val parsed = parseResponse(responseBody)
-            Result.success(parsed)
+            val root = gson.fromJson(responseBody, JsonObject::class.java)
+            val content = root
+                .getAsJsonArray("choices")
+                ?.get(0)?.asJsonObject
+                ?.getAsJsonObject("message")
+                ?.get("content")?.asString ?: "{}"
+
+            Result.success(content)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    private fun parseResponse(responseBody: String): VisitSummary {
-        val root = gson.fromJson(responseBody, JsonObject::class.java)
-        val content = root
-            .getAsJsonArray("choices")
-            ?.get(0)?.asJsonObject
-            ?.getAsJsonObject("message")
-            ?.get("content")?.asString ?: "{}"
+    private fun chunkText(text: String): List<String> {
+        val chunks = mutableListOf<String>()
+        var start = 0
+        while (start < text.length) {
+            val end = minOf(start + MAX_CHUNK_CHARS, text.length)
+            chunks.add(text.substring(start, end))
+            start = end - CHUNK_OVERLAP
+        }
+        return chunks
+    }
 
-        val contentObj = gson.fromJson(content, JsonObject::class.java)
+    private suspend fun generateChunkedSummary(
+        fullUrl: String,
+        apiKey: String,
+        model: String,
+        customPrompt: String?,
+        transcript: String
+    ): Result<VisitSummary> {
+        val chunks = chunkText(transcript)
+
+        // Step 1: summarize each chunk
+        val chunkSummaries = mutableListOf<String>()
+        for ((i, chunk) in chunks.withIndex()) {
+            val systemPrompt = "你是一个专业的商务会议助理。请简洁概括以下对话片段的要点。"
+            val userContent = "以下是客户拜访对话转写的第${i + 1}/${chunks.size}段，请用中文总结本段的关键信息（议题、结论、待办事项等）：\n\n$chunk"
+
+            val result = callLlm(fullUrl, apiKey, model, systemPrompt, userContent)
+            if (result.isFailure) return Result.failure(result.exceptionOrNull()!!)
+            chunkSummaries.add(result.getOrThrow())
+        }
+
+        // Step 2: merge all chunk summaries into final structured result
+        val systemPrompt = customPrompt ?: buildDefaultPrompt()
+        val mergeContent = buildString {
+            appendLine("以下是客户拜访对话各段落的摘要（共${chunks.size}段），请根据这些摘要提取完整的结构化信息：")
+            chunkSummaries.forEachIndexed { i, s ->
+                appendLine()
+                appendLine("【第${i + 1}段摘要】")
+                appendLine(s)
+            }
+        }
+
+        val result = callLlm(fullUrl, apiKey, model, systemPrompt, mergeContent)
+        if (result.isFailure) return Result.failure(result.exceptionOrNull()!!)
+
+        return Result.success(parseResponse(result.getOrThrow()))
+    }
+
+    private fun parseResponse(content: String): VisitSummary {
+        val contentObj = try {
+            gson.fromJson(content, JsonObject::class.java)
+        } catch (_: Exception) {
+            JsonObject()
+        }
 
         val topics = contentObj.getAsJsonArray("topics")?.map { it.asString } ?: emptyList()
         val conclusions = contentObj.getAsJsonArray("conclusions")?.map { it.asString } ?: emptyList()

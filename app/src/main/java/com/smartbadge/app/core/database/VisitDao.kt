@@ -19,13 +19,16 @@ interface VisitDao {
     @Query("SELECT * FROM visits WHERE id = :id")
     suspend fun getById(id: Long): VisitEntity?
 
+    @Query("SELECT * FROM visits WHERE id = :id")
+    fun getByIdFlow(id: Long): Flow<VisitEntity?>
+
     @Query("SELECT * FROM visits ORDER BY startTime DESC")
     fun getAllFlow(): Flow<List<VisitEntity>>
 
     @Query("SELECT * FROM visits ORDER BY startTime DESC")
     suspend fun getAll(): List<VisitEntity>
 
-    @Query("SELECT * FROM visits WHERE clientName LIKE '%' || :query || '%' OR clientCompany LIKE '%' || :query || '%' ORDER BY startTime DESC")
+    @Query("SELECT * FROM visits WHERE clientName LIKE '%' || :query || '%' OR clientCompany LIKE '%' || :query || '%' OR transcriptText LIKE '%' || :query || '%' ORDER BY startTime DESC")
     fun searchFlow(query: String): Flow<List<VisitEntity>>
 
     @Query("SELECT * FROM visits WHERE startTime BETWEEN :from AND :to ORDER BY startTime DESC")

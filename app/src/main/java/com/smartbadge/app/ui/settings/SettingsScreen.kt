@@ -1,6 +1,7 @@
 package com.smartbadge.app.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,11 +14,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -26,6 +30,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -33,11 +38,20 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 
@@ -48,6 +62,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var keyVisible by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -75,37 +90,40 @@ fun SettingsScreen(
         ) {
             // FunASR Settings
             SectionTitle("语音识别 (FunASR)")
-            OutlinedTextField(
+            ScrollableOutlinedField(
                 value = uiState.asrUrl,
                 onValueChange = viewModel::updateAsrUrl,
-                label = { Text("WebSocket 地址") },
-                placeholder = { Text("ws://192.168.1.100:10095") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = RoundedCornerShape(8.dp)
+                label = "WebSocket 地址",
+                hint = "ws://192.168.1.100:10095",
+                modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
             // LLM Settings
             SectionTitle("AI 总结 (OpenAI 兼容)")
-            OutlinedTextField(
+            ScrollableOutlinedField(
                 value = uiState.llmUrl,
                 onValueChange = viewModel::updateLlmUrl,
-                label = { Text("API 地址") },
-                placeholder = { Text("https://api.openai.com/v1/chat/completions") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = RoundedCornerShape(8.dp)
+                label = "API 地址",
+                hint = "https://api.deepseek.com",
+                modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
+            ScrollableOutlinedField(
                 value = uiState.llmKey,
                 onValueChange = viewModel::updateLlmKey,
-                label = { Text("API Key") },
+                label = "API Key",
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = RoundedCornerShape(8.dp)
+                visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { keyVisible = !keyVisible }) {
+                        Icon(
+                            imageVector = if (keyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = if (keyVisible) "隐藏 API Key" else "显示 API Key"
+                        )
+                    }
+                }
             )
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
@@ -205,5 +223,51 @@ private fun SectionTitle(title: String) {
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(bottom = 8.dp)
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScrollableOutlinedField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    hint: String = "",
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    trailingIcon: @Composable (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    var textFieldValue by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
+
+    LaunchedEffect(value) {
+        if (value != textFieldValue.text) {
+            textFieldValue = TextFieldValue(value, TextRange(textFieldValue.selection.start.coerceAtMost(value.length)))
+        }
+    }
+
+    BasicTextField(
+        value = textFieldValue,
+        onValueChange = {
+            textFieldValue = it
+            onValueChange(it.text)
+        },
+        singleLine = true,
+        visualTransformation = visualTransformation,
+        modifier = modifier,
+        decorationBox = { innerTextField ->
+            OutlinedTextFieldDefaults.DecorationBox(
+                value = value,
+                innerTextField = innerTextField,
+                enabled = true,
+                singleLine = true,
+                visualTransformation = visualTransformation,
+                interactionSource = remember { MutableInteractionSource() },
+                label = { Text(label) },
+                placeholder = if (hint.isNotBlank()) { @Composable { Text(hint) } } else null,
+                trailingIcon = trailingIcon ?: @Composable {},
+                colors = OutlinedTextFieldDefaults.colors(),
+                contentPadding = OutlinedTextFieldDefaults.contentPadding()
+            )
+        }
     )
 }

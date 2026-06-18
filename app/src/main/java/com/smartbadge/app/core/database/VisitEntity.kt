@@ -25,6 +25,9 @@ data class VisitEntity(
     val todosJson: String,              // JSON array of TodoItem
     val nextSteps: String,
     val audioFilePath: String,
+    val transcriptFilePath: String = "",
+    val transcriptStatus: String = "PENDING",
+    val summaryStatus: String = "PENDING",
     val createdAt: Long                 // epoch millis
 ) {
     companion object {
@@ -45,6 +48,9 @@ data class VisitEntity(
             todosJson = gson.toJson(visit.summary?.todos ?: emptyList<TodoItem>()),
             nextSteps = visit.summary?.nextSteps ?: "",
             audioFilePath = visit.audioFilePath,
+            transcriptFilePath = visit.transcriptFilePath,
+            transcriptStatus = visit.transcriptStatus.name,
+            summaryStatus = visit.summaryStatus.name,
             createdAt = visit.createdAt.toEpochMilli()
         )
     }
@@ -82,8 +88,11 @@ data class VisitEntity(
             endTime = endTime?.let { java.time.Instant.ofEpochMilli(it) },
             locationPoints = locationPoints,
             transcriptText = transcriptText,
+            transcriptStatus = try { com.smartbadge.app.domain.model.ProcessingStatus.valueOf(transcriptStatus) } catch (_: Exception) { com.smartbadge.app.domain.model.ProcessingStatus.PENDING },
             summary = if (hasSummary) VisitSummary(topics, conclusions, todos, nextSteps) else null,
+            summaryStatus = try { com.smartbadge.app.domain.model.ProcessingStatus.valueOf(summaryStatus) } catch (_: Exception) { com.smartbadge.app.domain.model.ProcessingStatus.PENDING },
             audioFilePath = audioFilePath,
+            transcriptFilePath = transcriptFilePath,
             createdAt = java.time.Instant.ofEpochMilli(createdAt)
         )
     }

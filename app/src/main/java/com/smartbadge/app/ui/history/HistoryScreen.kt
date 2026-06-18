@@ -76,7 +76,7 @@ fun HistoryScreen(
             OutlinedTextField(
                 value = uiState.searchQuery,
                 onValueChange = viewModel::search,
-                placeholder = { Text("搜索客户名称或公司") },
+                placeholder = { Text("搜索客户名称、公司或对话内容", style = MaterialTheme.typography.bodySmall) },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
                 singleLine = true,

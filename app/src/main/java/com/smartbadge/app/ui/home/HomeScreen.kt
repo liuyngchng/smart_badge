@@ -25,7 +25,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -83,14 +84,6 @@ fun HomeScreen(
                 }
             )
         },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onStartVisit,
-                containerColor = MaterialTheme.colorScheme.secondary
-            ) {
-                Icon(Icons.Default.Mic, contentDescription = "开始拜访", tint = MaterialTheme.colorScheme.onSecondary)
-            }
-        }
     ) { padding ->
         if (uiState.isLoading) {
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
@@ -119,12 +112,26 @@ fun HomeScreen(
                     }
                 }
 
+                // Mic button
+                item {
+                    Button(
+                        onClick = onStartVisit,
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                    ) {
+                        Icon(Icons.Default.Mic, contentDescription = "开始拜访", tint = MaterialTheme.colorScheme.onSecondary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("开始拜访", color = MaterialTheme.colorScheme.onSecondary)
+                    }
+                }
+
                 item {
                     Text(
                         "最近拜访",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 8.dp)
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
 
@@ -135,7 +142,7 @@ fun HomeScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                "暂无拜访记录\n点击下方按钮开始新拜访",
+                                "暂无拜访记录\n点击上方按钮开始新拜访",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                             )
@@ -147,7 +154,7 @@ fun HomeScreen(
                     VisitCard(visit = visit, onClick = { onVisitClick(visit.id) })
                 }
 
-                item { Spacer(modifier = Modifier.height(80.dp)) }
+                item { Spacer(modifier = Modifier.height(16.dp)) }
             }
         }
     }
