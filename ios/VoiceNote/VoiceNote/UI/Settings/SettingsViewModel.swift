@@ -10,6 +10,7 @@ final class SettingsViewModel: ObservableObject {
     @Published var llmModel: String
 
     @Published var saveConfirmed = false
+    @Published var validationError: String?
 
     // MARK: - 连接测试状态
     @Published var wsTestResult: ConnectionTestResult = .idle
@@ -43,7 +44,7 @@ final class SettingsViewModel: ObservableObject {
         let defaults = UserDefaults.standard
         let a = defaults.string(forKey: "asr_url")    ?? "ws://192.168.1.110:10095"
         let b = defaults.string(forKey: "llm_url")    ?? "https://api.deepseek.com"
-        let c = defaults.string(forKey: "llm_key")    ?? "sk-0220a5e0d8ff4d39828859be52563df1"
+        let c = defaults.string(forKey: "llm_key")    ?? ""
         let d = defaults.string(forKey: "llm_model")  ?? "deepseek-v4-pro"
 
         asrURL = a
@@ -55,8 +56,16 @@ final class SettingsViewModel: ObservableObject {
 
     private var saveGeneration = 0
 
-    /// 显式保存
-    func save() {
+    /// 显式保存；返回 true 表示保存成功（校验通过并已写入）
+    @discardableResult
+    func save() -> Bool {
+        // 校验
+        if let error = validate() {
+            validationError = error
+            return false
+        }
+        validationError = nil
+
         let defaults = UserDefaults.standard
         defaults.set(asrURL,   forKey: "asr_url")
         defaults.set(llmURL,   forKey: "llm_url")
@@ -76,6 +85,35 @@ final class SettingsViewModel: ObservableObject {
                 saveConfirmed = false
             }
         }
+        return true
+    }
+
+    // MARK: - 输入校验
+
+    /// 校验所有必填字段；返回 nil 表示通过，否则返回错误信息
+    func validate() -> String? {
+        let trimmed = [
+            ("FunASR 地址", asrURL),
+            ("LLM API 地址", llmURL),
+            ("API Key", llmKey),
+            ("模型名称", llmModel),
+        ]
+        for (name, value) in trimmed {
+            if value.trimmingCharacters(in: .whitespaces).isEmpty {
+                return "\(name) 不能为空"
+            }
+        }
+        // URL 格式校验
+        for (name, value) in [("FunASR 地址", asrURL), ("LLM API 地址", llmURL)] {
+            guard let url = URL(string: value.trimmingCharacters(in: .whitespaces)),
+                  let scheme = url.scheme,
+                  !scheme.isEmpty,
+                  url.host != nil
+            else {
+                return "\(name) 格式不正确"
+            }
+        }
+        return nil
     }
 
     // MARK: - 连接测试

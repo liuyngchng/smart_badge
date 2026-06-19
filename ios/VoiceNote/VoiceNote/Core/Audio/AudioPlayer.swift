@@ -17,12 +17,15 @@ final class AudioPlayer: ObservableObject {
     func load(url: URL) {
         stop()
         do {
+            let fileSize = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            print("[AudioPlayer] 加载音频: \(url.lastPathComponent) (\(fileSize) bytes)")
             player = try AVAudioPlayer(contentsOf: url)
             player?.prepareToPlay()
             duration = player?.duration ?? 0
             isReady = true
+            print("[AudioPlayer] 加载成功, duration=\(duration)s, channels=\(player?.numberOfChannels ?? 0), sampleRate=\(player?.format.sampleRate ?? 0)")
         } catch {
-            print("[AudioPlayer] load failed: \(error)")
+            print("[AudioPlayer] 加载失败: \(error.localizedDescription), url=\(url.path)")
             isReady = false
         }
     }
@@ -31,16 +34,23 @@ final class AudioPlayer: ObservableObject {
     func togglePlayPause() {
         guard let player else { return }
         if player.isPlaying {
+            print("[AudioPlayer] 暂停播放")
             player.pause()
             isPlaying = false
             stopTimer()
         } else {
             let session = AVAudioSession.sharedInstance()
-            try? session.setCategory(.playback, mode: .default)
-            try? session.setActive(true)
+            do {
+                try session.setCategory(.playback, mode: .default)
+                try session.setActive(true)
+                print("[AudioPlayer] AudioSession 已激活(.playback)")
+            } catch {
+                print("[AudioPlayer] AudioSession 激活失败: \(error)")
+            }
             player.play()
             isPlaying = true
             startTimer()
+            print("[AudioPlayer] 开始播放, currentTime=\(player.currentTime)")
         }
     }
 

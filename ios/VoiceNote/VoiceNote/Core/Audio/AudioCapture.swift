@@ -89,6 +89,12 @@ final class AudioCapture {
         guard isRunning else { return }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        // 释放 AudioSession，避免影响后续播放
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        } catch {
+            print("[AudioCapture] deactivate session error: \(error)")
+        }
         isRunning = false
     }
 }

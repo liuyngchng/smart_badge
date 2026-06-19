@@ -38,6 +38,7 @@ final class RecordingManager: ObservableObject {
     private var durationTask: Task<Void, Never>?
 
     private var currentPcmURL: URL?
+    private var currentFileHandle: FileHandle?
     private var lastPartialText: String = ""
     private var audioDataWritable: ((Data) -> Void)?
     private var batteryWarningShown = false
@@ -304,23 +305,43 @@ final class RecordingManager: ObservableObject {
         let url = dir.appendingPathComponent("\(dateString).pcm")
         fileManager.createFile(atPath: url.path, contents: nil)
 
-        // 设置写入回调
+        // 打开并持有 FileHandle，关闭时由 finalizeAudio 负责
         let fileHandle = try? FileHandle(forWritingTo: url)
-        onAudioData { data in
+        currentFileHandle = fileHandle
+        onAudioData { [weak fileHandle] data in
             try? fileHandle?.write(contentsOf: data)
         }
 
         currentPcmURL = url
+        Log.recording("开始写入 PCM: \(url.path)")
         return url
     }
 
     func finalizeAudio(visitId: UUID, pcmURL: URL) -> String? {
-        try? FileHandle(forWritingTo: pcmURL).close()
+        // 先关闭持有的 FileHandle，确保数据刷盘
+        if let handle = currentFileHandle {
+            try? handle.synchronize()
+            try? handle.close()
+            currentFileHandle = nil
+            Log.recording("PCM FileHandle 已关闭并同步")
+        }
 
         let wavURL = pcmURL.deletingPathExtension().appendingPathExtension("wav")
         guard let pcmData = try? Data(contentsOf: pcmURL),
               pcmData.count > 0
-        else { return nil }
+        else {
+            Log.recording("finalizeAudio 失败: PCM 文件为空或不可读")
+            return nil
+        }
+
+        Log.recording("finalizeAudio: PCM size=\(pcmData.count) bytes, duration≈\(Double(pcmData.count) / 32000.0)s")
+
+        // 验证 PCM 数据非空（检查前 100 个 sample 的最大值）
+        let samples = pcmData.withUnsafeBytes { ptr -> [Int16] in
+            Array(ptr.bindMemory(to: Int16.self).prefix(100))
+        }
+        let maxAbs = samples.map(abs).max() ?? 0
+        Log.recording("finalizeAudio: 前100个sample中最大振幅=\(maxAbs)")
 
         let dataSize = Int32(pcmData.count)
         let fileSize = dataSize + 36

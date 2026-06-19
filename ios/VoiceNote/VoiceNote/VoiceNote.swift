@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 /// App 入口
 /// 对齐 Android: SmartBadgeApp.kt + MainActivity.kt
@@ -10,6 +11,26 @@ struct SmartBadgeApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(container)
+        }
+    }
+}
+
+// MARK: - 麦克风权限请求
+
+private struct MicrophonePermissionModifier: ViewModifier {
+    @State private var hasRequested = false
+
+    func body(content: Content) -> some View {
+        content.onAppear {
+            guard !hasRequested else { return }
+            hasRequested = true
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                if granted {
+                    print("[Mic] 麦克风权限已授予")
+                } else {
+                    print("[Mic] 麦克风权限被拒绝")
+                }
+            }
         }
     }
 }
@@ -35,6 +56,7 @@ private struct RootView: View {
                 .background(detailLink)
         }
         .navigationViewStyle(.stack)
+        .modifier(MicrophonePermissionModifier())
     }
 
     // MARK: - 隐藏 NavigationLink (程序化导航)

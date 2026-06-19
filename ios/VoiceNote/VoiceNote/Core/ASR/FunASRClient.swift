@@ -143,16 +143,23 @@ final class FunASRClient {
 
     /// 测试 WebSocket 连接可达性 — 使用与真实录音相同的握手格式和连接流程
     static func testConnection(urlString: String) async -> ConnectionTestResult {
+        Log.asr("[Test] 开始测试连接: \(urlString)")
+
         guard !urlString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            Log.asr("[Test] 失败: 地址为空")
             return .failure("WebSocket 地址为空")
         }
         guard let url = URL(string: urlString) else {
+            Log.asr("[Test] 失败: URL 解析失败")
             return .failure("无效的 URL 格式")
         }
         guard let scheme = url.scheme?.lowercased(),
               scheme == "ws" || scheme == "wss" else {
+            Log.asr("[Test] 失败: scheme 不是 ws/wss, 实际=\(url.scheme ?? "nil")")
             return .failure("URL 必须以 ws:// 或 wss:// 开头")
         }
+
+        Log.asr("[Test] URL 校验通过, scheme=\(scheme), host=\(url.host ?? "nil"), port=\(url.port.map(String.init) ?? "nil")")
 
         return await withCheckedContinuation { continuation in
             final class Gate { var fired = false }
@@ -161,6 +168,7 @@ final class FunASRClient {
             let finish: @Sendable (ConnectionTestResult) -> Void = { result in
                 guard !gate.fired else { return }
                 gate.fired = true
+                Log.asr("[Test] 测试结束: \(result.message)")
                 continuation.resume(returning: result)
             }
 
@@ -169,13 +177,17 @@ final class FunASRClient {
             let session = URLSession(configuration: config)
             let task = session.webSocketTask(with: url)
 
+            Log.asr("[Test] WebSocket task 已创建, 准备连接...")
+
             // 超时 8 秒
             DispatchQueue.global().asyncAfter(deadline: .now() + 8) {
+                Log.asr("[Test] 超时(8s), 取消任务")
                 task.cancel()
                 finish(.failure("连接超时（8秒）"))
             }
 
             task.resume()
+            Log.asr("[Test] WebSocket task resumed, 发送握手...")
 
             // 发送握手 — 与 sendHandshake() 完全一致的格式
             let handshake: [String: Any] = [
@@ -186,33 +198,47 @@ final class FunASRClient {
             ]
             if let data = try? JSONSerialization.data(withJSONObject: handshake),
                let text = String(data: data, encoding: .utf8) {
+                Log.asr("[Test] 握手消息: \(text)")
                 task.send(.string(text)) { error in
                     if let error = error {
+                        Log.asr("[Test] 发送握手失败: \(error.localizedDescription)")
                         task.cancel()
                         finish(.failure("发送握手失败: \(error.localizedDescription)"))
+                    } else {
+                        Log.asr("[Test] 握手已发送")
                     }
                 }
             } else {
+                Log.asr("[Test] 无法构建握手消息")
                 task.cancel()
                 finish(.failure("无法构建握手消息"))
             }
 
             // 握手后发送结束信号，触发服务端离线 pass 返回结果
             DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
+                Log.asr("[Test] 发送结束信号...")
                 let endMsg: [String: Any] = ["is_speaking": false]
                 if let data = try? JSONSerialization.data(withJSONObject: endMsg),
                    let text = String(data: data, encoding: .utf8) {
-                    task.send(.string(text)) { _ in }
+                    task.send(.string(text)) { error in
+                        if let error = error {
+                            Log.asr("[Test] 发送结束信号失败: \(error.localizedDescription)")
+                        } else {
+                            Log.asr("[Test] 结束信号已发送，等待服务端响应...")
+                        }
+                    }
                 }
             }
 
             // 等待服务端响应（成功则表明连接可用）
             task.receive { result in
                 switch result {
-                case .success:
+                case .success(let message):
+                    Log.asr("[Test] 收到响应: \(message)")
                     task.cancel()
                     finish(.success)
                 case .failure(let error):
+                    Log.asr("[Test] 连接失败: code=\((error as NSError).code), domain=\((error as NSError).domain), desc=\(error.localizedDescription)")
                     task.cancel()
                     finish(.failure("连接失败: \(error.localizedDescription)"))
                 }

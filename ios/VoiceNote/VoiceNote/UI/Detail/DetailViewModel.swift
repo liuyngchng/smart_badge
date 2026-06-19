@@ -9,6 +9,7 @@ final class DetailViewModel: ObservableObject {
     @Published var audioPlayer = AudioPlayer()
 
     private let container: AppContainer
+    private var loadedAudioPath: String?
     private var cancellables = Set<AnyCancellable>()
     private var refreshTimer: AnyCancellable?
     private var currentVisitId: UUID?
@@ -58,11 +59,13 @@ final class DetailViewModel: ObservableObject {
         }
     }
 
-    /// 加载音频文件到播放器
+    /// 加载音频文件到播放器（已加载则跳过，避免重复打断播放状态）
     private func loadAudioIfNeeded() {
         guard let path = visit?.audioFilePath, !path.isEmpty else { return }
+        guard loadedAudioPath != path else { return }
         let url = URL(fileURLWithPath: path)
         guard FileManager.default.fileExists(atPath: path) else { return }
+        loadedAudioPath = path
         audioPlayer.load(url: url)
     }
 

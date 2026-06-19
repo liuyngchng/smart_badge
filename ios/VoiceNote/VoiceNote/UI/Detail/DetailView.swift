@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct DetailView: View {
-    @ObservedObject var viewModel: DetailViewModel
+    @StateObject var viewModel: DetailViewModel
     let visitId: UUID
     let onBack: () -> Void
 
@@ -65,7 +65,7 @@ struct DetailView: View {
                         }
                         if !summary.todos.isEmpty {
                             VStack(alignment: .leading, spacing: 6) {
-                                Label("待办", systemImage: "checklist")
+                                Label("待办", systemImage: "list.bullet")
                                     .font(.subheadline)
                                     .foregroundColor(.orange)
                                 ForEach(summary.todos) { todo in
@@ -159,7 +159,7 @@ struct DetailView: View {
                                 to: viewModel.audioPlayer.currentTime - 15
                             )
                         } label: {
-                            Image(systemName: "gobackward.15")
+                            Image(systemName: "gobackward")
                                 .font(.title2)
                         }
 
@@ -181,7 +181,7 @@ struct DetailView: View {
                                 to: viewModel.audioPlayer.currentTime + 15
                             )
                         } label: {
-                            Image(systemName: "goforward.15")
+                            Image(systemName: "goforward")
                                 .font(.title2)
                         }
                     }

@@ -4,6 +4,9 @@ struct SettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
     let onBack: () -> Void
 
+    @State private var showBackAlert = false
+    @State private var showValidationAlert = false
+
     var body: some View {
         Form {
             Section(header: Text("FunASR 语音识别")) {
@@ -50,7 +53,7 @@ struct SettingsView: View {
                 HStack {
                     Spacer()
                     Button(action: { viewModel.test() }) {
-                        Label("测试", systemImage: "checklist")
+                        Label("测试", systemImage: "checkmark.circle")
                             .font(.caption)
                     }
                     .disabled(viewModel.isTesting)
@@ -90,13 +93,37 @@ struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                Button("返回", action: onBack)
+                Button("返回") {
+                    if viewModel.hasChanges {
+                        showBackAlert = true
+                    } else {
+                        onBack()
+                    }
+                }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("保存") {
-                    viewModel.save()
+                    if !viewModel.save() {
+                        showValidationAlert = true
+                    }
                 }
+                .disabled(!viewModel.hasChanges)
             }
+        }
+        .alert(isPresented: $showBackAlert) {
+            Alert(
+                title: Text("未保存的修改"),
+                message: Text("设置已修改但尚未保存，确定要离开吗？"),
+                primaryButton: .destructive(Text("放弃修改")) { onBack() },
+                secondaryButton: .cancel(Text("继续编辑"))
+            )
+        }
+        .alert(isPresented: $showValidationAlert) {
+            Alert(
+                title: Text("保存失败"),
+                message: Text(viewModel.validationError ?? "输入有误"),
+                dismissButton: .cancel(Text("好"))
+            )
         }
     }
 
