@@ -16,7 +16,7 @@ struct DetailView: View {
                     .foregroundColor(.secondary)
             }
         }
-        .navigationTitle("拜访详情")
+        .navigationTitle("记录详情")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
@@ -32,12 +32,12 @@ struct DetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 // 基本信息
                 GroupBox(label: Text("基本信息")) {
-                    infoRow("客户", visit.clientName)
+                    infoRow("标题", visit.clientName)
                     if !visit.clientCompany.isEmpty {
-                        infoRow("公司", visit.clientCompany)
+                        infoRow("备注", visit.clientCompany)
                     }
                     if !visit.purpose.isEmpty {
-                        infoRow("目的", visit.purpose)
+                        infoRow("描述", visit.purpose)
                     }
                     if !visit.participants.isEmpty {
                         infoRow("参与人员", visit.participants.joined(separator: "、"))

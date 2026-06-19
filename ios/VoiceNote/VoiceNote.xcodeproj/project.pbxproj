@@ -32,9 +32,9 @@
 		793370C32FE40E1800752EE2 /* FunASRClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370A92FE40E1700752EE2 /* FunASRClient.swift */; };
 		793370C42FE40E1800752EE2 /* RecordingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370AB2FE40E1700752EE2 /* RecordingManager.swift */; };
 		793370C52FE40E1800752EE2 /* VisitRepositoryImpl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370AE2FE40E1700752EE2 /* VisitRepositoryImpl.swift */; };
-		793370C72FE40E8900752EE2 /* SmartBadgeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370C62FE40E8900752EE2 /* SmartBadgeApp.swift */; };
 		793370C82FE40E9000752EE2 /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370D02FE40E9000752EE2 /* AudioPlayer.swift */; };
 		793370C92FE40E9000752EE3 /* ConnectionTester.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370D12FE40E9000752EE3 /* ConnectionTester.swift */; };
+		79815C502FE4BD21005AFCD5 /* VoiceNote.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79815C4F2FE4BD21005AFCD5 /* VoiceNote.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -43,14 +43,14 @@
 			containerPortal = 79336FC32FE40A2000752EE2 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 79336FCA2FE40A2000752EE2;
-			remoteInfo = SmartBadgeApp;
+			remoteInfo = VoiceNote;
 		};
 		79336FE62FE40A2200752EE2 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 79336FC32FE40A2000752EE2 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 79336FCA2FE40A2000752EE2;
-			remoteInfo = SmartBadgeApp;
+			remoteInfo = VoiceNote;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -83,9 +83,9 @@
 		793370A92FE40E1700752EE2 /* FunASRClient.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FunASRClient.swift; sourceTree = "<group>"; };
 		793370AB2FE40E1700752EE2 /* RecordingManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = RecordingManager.swift; sourceTree = "<group>"; };
 		793370AE2FE40E1700752EE2 /* VisitRepositoryImpl.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = VisitRepositoryImpl.swift; sourceTree = "<group>"; };
-		793370C62FE40E8900752EE2 /* SmartBadgeApp.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SmartBadgeApp.swift; sourceTree = "<group>"; };
 		793370D02FE40E9000752EE2 /* AudioPlayer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
 		793370D12FE40E9000752EE3 /* ConnectionTester.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ConnectionTester.swift; sourceTree = "<group>"; };
+		79815C4F2FE4BD21005AFCD5 /* VoiceNote.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = VoiceNote.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -134,7 +134,7 @@
 		79336FCD2FE40A2000752EE2 /* VoiceNote */ = {
 			isa = PBXGroup;
 			children = (
-				793370C62FE40E8900752EE2 /* SmartBadgeApp.swift */,
+				79815C4F2FE4BD21005AFCD5 /* VoiceNote.swift */,
 				7933709D2FE40E1700752EE2 /* Core */,
 				793370AC2FE40E1700752EE2 /* Data */,
 				793370962FE40E1600752EE2 /* Domain */,
@@ -350,7 +350,7 @@
 			dependencies = (
 			);
 			name = VoiceNote;
-			productName = SmartBadgeApp;
+			productName = VoiceNote;
 			productReference = 79336FCB2FE40A2000752EE2 /* VoiceNote.app */;
 			productType = "com.apple.product-type.application";
 		};
@@ -368,7 +368,7 @@
 				79336FDD2FE40A2200752EE2 /* PBXTargetDependency */,
 			);
 			name = VoiceNoteTests;
-			productName = SmartBadgeAppTests;
+			productName = VoiceNoteTests;
 			productReference = 79336FDB2FE40A2200752EE2 /* VoiceNoteTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
@@ -386,7 +386,7 @@
 				79336FE72FE40A2200752EE2 /* PBXTargetDependency */,
 			);
 			name = VoiceNoteUITests;
-			productName = SmartBadgeAppUITests;
+			productName = VoiceNoteUITests;
 			productReference = 79336FE52FE40A2200752EE2 /* VoiceNoteUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
@@ -463,6 +463,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				79815C502FE4BD21005AFCD5 /* VoiceNote.swift in Sources */,
 				793370AF2FE40E1800752EE2 /* SettingsView.swift in Sources */,
 				793370C52FE40E1800752EE2 /* VisitRepositoryImpl.swift in Sources */,
 				793370B32FE40E1800752EE2 /* RecordingView.swift in Sources */,
@@ -480,7 +481,6 @@
 				793370B02FE40E1800752EE2 /* SettingsViewModel.swift in Sources */,
 				793370C02FE40E1800752EE2 /* AppContainer.swift in Sources */,
 				793370BC2FE40E1800752EE2 /* VisitSummary.swift in Sources */,
-				793370C72FE40E8900752EE2 /* SmartBadgeApp.swift in Sources */,
 				793370BB2FE40E1800752EE2 /* LocationPoint.swift in Sources */,
 				793370C42FE40E1800752EE2 /* RecordingManager.swift in Sources */,
 				793370C82FE40E9000752EE2 /* AudioPlayer.swift in Sources */,
@@ -643,11 +643,11 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"SmartBadgeApp/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"VoiceNote/Preview Content\"";
 				DEVELOPMENT_TEAM = 2XX528DY7X;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = SmartBadgeApp/Info.plist;
+				INFOPLIST_FILE = VoiceNote/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "语音笔记";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -660,7 +660,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.SmartBadgeApp;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.VoiceNote;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -678,11 +678,11 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"SmartBadgeApp/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"VoiceNote/Preview Content\"";
 				DEVELOPMENT_TEAM = 2XX528DY7X;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = SmartBadgeApp/Info.plist;
+				INFOPLIST_FILE = VoiceNote/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "语音笔记";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -695,7 +695,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.SmartBadgeApp;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.VoiceNote;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -715,7 +715,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.SmartBadgeAppTests;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.VoiceNoteTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -735,7 +735,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.SmartBadgeAppTests;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.VoiceNoteTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -754,7 +754,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.SmartBadgeAppUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.VoiceNoteUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -762,7 +762,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
-				TEST_TARGET_NAME = SmartBadgeApp;
+				TEST_TARGET_NAME = VoiceNote;
 			};
 			name = Debug;
 		};
@@ -774,7 +774,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.SmartBadgeAppUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.VoiceNoteUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -782,7 +782,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
-				TEST_TARGET_NAME = SmartBadgeApp;
+				TEST_TARGET_NAME = VoiceNote;
 			};
 			name = Release;
 		};

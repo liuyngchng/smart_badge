@@ -229,7 +229,7 @@ final class LLMClient {
     // MARK: - 默认 Prompt
 
     private let defaultPrompt = """
-    你是一个专业的商务助理，负责总结客户拜访记录。
+    你是一个专业的商务助理，负责总结语音记录。
     请根据转写文本，提取以下信息，并以 JSON 格式返回：
 
     {

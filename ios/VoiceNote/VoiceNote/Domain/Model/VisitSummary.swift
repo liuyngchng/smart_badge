@@ -1,6 +1,6 @@
 import Foundation
 
-/// AI 生成的拜访总结
+/// AI 生成的总结
 /// 对齐 Android: app/src/.../domain/model/VisitSummary.kt
 struct VisitSummary: Codable, Equatable {
     var topics: [String]

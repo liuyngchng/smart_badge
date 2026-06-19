@@ -19,7 +19,7 @@ struct HistoryView: View {
                     Text("暂无记录")
                         .font(.headline)
                     Text(viewModel.searchQuery.isEmpty
-                        ? "还没有任何拜访记录"
+                        ? "还没有任何记录"
                         : "未找到 \"\(viewModel.searchQuery)\" 的相关记录")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
@@ -94,7 +94,7 @@ private struct SearchableModifier: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 15.0, *) {
             content
-                .searchable(text: $searchQuery, prompt: "按客户名称或公司搜索")
+                .searchable(text: $searchQuery, prompt: "输入关键词搜索")
                 .onSubmit(of: .search) { onSubmit() }
                 .onChange(of: searchQuery) { _ in
                     if searchQuery.isEmpty { onChange() }
@@ -126,7 +126,7 @@ private struct iOS14SearchBar: View {
                     .foregroundColor(.secondary)
                     .font(.caption)
 
-                TextField("按客户名称或公司搜索", text: $localText, onCommit: {
+                TextField("输入关键词搜索", text: $localText, onCommit: {
                     searchQuery = localText
                     onSubmit()
                 })

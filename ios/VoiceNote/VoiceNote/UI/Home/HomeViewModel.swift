@@ -8,7 +8,7 @@ final class HomeViewModel: ObservableObject {
 
     private let container: AppContainer
 
-    /// 有录音文件的记录（真正完成了录音的拜访）
+    /// 有录音文件的记录
     private var recordedVisits: [Visit] {
         visits.filter { visit in
             guard let path = visit.audioFilePath, !path.isEmpty else { return false }

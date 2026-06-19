@@ -1,6 +1,6 @@
 import Foundation
 
-/// 拜访记录（领域模型）
+/// 语音记录（领域模型）
 /// 对齐 Android: app/src/.../domain/model/Visit.kt
 struct Visit: Identifiable, Codable {
     let id: UUID

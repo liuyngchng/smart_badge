@@ -86,9 +86,9 @@ final class RecordingManager: ObservableObject {
             }
         }
 
-        // 启动定位
+        // 获取单次位置
         locationTask = Task {
-            for await point in container.locationTracker.startTracking() {
+            if let point = await container.locationTracker.requestCurrentLocation() {
                 locationPoints.append(point)
             }
         }
@@ -179,7 +179,6 @@ final class RecordingManager: ObservableObject {
         phase = .stopping
         durationTask?.cancel()
         locationTask?.cancel()
-        container.locationTracker.stopTracking()
         container.audioCapture.stop()
 
         // 发送 ASR 结束信号（触发离线纠错）

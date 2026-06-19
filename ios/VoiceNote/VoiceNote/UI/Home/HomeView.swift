@@ -12,7 +12,7 @@ struct HomeView: View {
         List {
             Section(header: Text("今日概览")) {
                 HStack {
-                    StatCard(title: "今日拜访", value: "\(viewModel.todayVisitCount)")
+                    StatCard(title: "今日记录", value: "\(viewModel.todayVisitCount)")
                     Spacer()
                     StatCard(title: "总记录", value: "\(viewModel.totalRecordCount)")
                 }
@@ -21,7 +21,7 @@ struct HomeView: View {
 
             Section(header: Text("最近记录")) {
                 if viewModel.recentVisits.isEmpty {
-                    Text("暂无拜访记录")
+                    Text("暂无记录")
                         .foregroundColor(.secondary)
                         .padding(.vertical, 20)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -43,7 +43,7 @@ struct HomeView: View {
                 }
             }
         }
-        .navigationTitle("智能工牌")
+        .navigationTitle("语音笔记")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button(action: onNewVisit) {
@@ -199,11 +199,6 @@ private struct VisitRow: View {
             HStack {
                 Text(visit.clientName)
                     .font(.headline)
-                if !visit.clientCompany.isEmpty {
-                    Text("· \(visit.clientCompany)")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
                 Spacer()
                 statusBadge
             }

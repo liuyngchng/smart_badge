@@ -5,9 +5,9 @@ import Foundation
 final class RecordingViewModel: ObservableObject {
     // MARK: - 表单字段
 
-    @Published var clientName = ""
-    @Published var clientCompany = ""
-    @Published var purpose = ""
+    @Published var title = ""
+    @Published var notes = ""
+    @Published var description = ""
     @Published var participants = ""
 
     // MARK: - 录音状态
@@ -33,8 +33,8 @@ final class RecordingViewModel: ObservableObject {
     }
 
     func startVisit() {
-        guard !clientName.isEmpty else {
-            errorMessage = "请输入客户名称"
+        guard !title.isEmpty else {
+            errorMessage = "请输入标题"
             return
         }
 
@@ -51,9 +51,9 @@ final class RecordingViewModel: ObservableObject {
             let asrURL = UserDefaults.standard.string(forKey: "asr_url") ?? ""
 
             let visit = Visit(
-                clientName: clientName,
-                clientCompany: clientCompany,
-                purpose: purpose,
+                clientName: title,
+                clientCompany: notes,
+                purpose: description,
                 participants: participants
                     .split(separator: ",")
                     .map { String($0).trimmingCharacters(in: .whitespaces) }

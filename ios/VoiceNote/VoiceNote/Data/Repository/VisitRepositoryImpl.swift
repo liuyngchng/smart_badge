@@ -1,7 +1,7 @@
 import CoreData
 import Foundation
 
-/// 拜访数据仓库实现
+/// 数据仓库实现
 /// 对齐 Android: VisitRepositoryImpl.kt
 final class VisitRepositoryImpl: VisitRepository {
     private let container: AppContainer

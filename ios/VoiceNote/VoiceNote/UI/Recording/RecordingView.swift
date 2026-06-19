@@ -13,7 +13,7 @@ struct RecordingView: View {
                 formContent
             }
         }
-        .navigationTitle(viewModel.isRecording ? "拜访进行中" : "新建拜访")
+        .navigationTitle(viewModel.isRecording ? "录音中" : "新建记录")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
@@ -41,19 +41,13 @@ struct RecordingView: View {
         VStack(spacing: 0) {
             recordingIndicator
 
-            HStack(spacing: 8) {
-                Text("客户: \(viewModel.clientName)")
+            if !viewModel.title.isEmpty {
+                Text(viewModel.title)
                     .font(.caption)
                     .foregroundColor(.secondary)
-                if !viewModel.purpose.isEmpty {
-                    Text("目的: \(viewModel.purpose)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("实时转写")
@@ -101,7 +95,7 @@ struct RecordingView: View {
                         } else {
                             Image(systemName: "stop.fill")
                         }
-                        Text("结束拜访")
+                        Text("结束录音")
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
@@ -150,12 +144,12 @@ struct RecordingView: View {
 
     private var formContent: some View {
         Form {
-            Section(header: Text("拜访信息")) {
-                TextField("客户名称 *", text: $viewModel.clientName)
+            Section(header: Text("记录信息")) {
+                TextField("标题", text: $viewModel.title)
 
-                TextField("客户公司", text: $viewModel.clientCompany)
+                TextField("备注", text: $viewModel.notes)
 
-                TextField("拜访目的", text: $viewModel.purpose)
+                TextField("描述", text: $viewModel.description)
 
                 TextField("参与人员（逗号分隔）", text: $viewModel.participants)
             }
@@ -172,7 +166,7 @@ struct RecordingView: View {
                         if viewModel.isStarting {
                             ProgressView()
                         }
-                        Text("开始录音拜访")
+                        Text("开始录音")
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                 }
