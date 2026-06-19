@@ -41,9 +41,9 @@ final class SettingsViewModel: ObservableObject {
 
     init() {
         let defaults = UserDefaults.standard
-        let a = defaults.string(forKey: "asr_url")    ?? "ws://192.168.27.29:10095"
+        let a = defaults.string(forKey: "asr_url")    ?? "ws://192.168.1.110:10095"
         let b = defaults.string(forKey: "llm_url")    ?? "https://api.deepseek.com"
-        let c = defaults.string(forKey: "llm_key")    ?? ""
+        let c = defaults.string(forKey: "llm_key")    ?? "sk-0220a5e0d8ff4d39828859be52563df1"
         let d = defaults.string(forKey: "llm_model")  ?? "deepseek-v4-pro"
 
         asrURL = a

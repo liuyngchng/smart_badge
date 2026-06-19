@@ -6,12 +6,18 @@ final class DetailViewModel: ObservableObject {
     @Published var visit: Visit?
     @Published var isLoading = true
 
-    let audioPlayer = AudioPlayer()
+    @Published var audioPlayer = AudioPlayer()
 
     private let container: AppContainer
+    private var cancellables = Set<AnyCancellable>()
 
     init(container: AppContainer) {
         self.container = container
+        audioPlayer.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
     }
 
     func loadVisit(id: UUID) {
