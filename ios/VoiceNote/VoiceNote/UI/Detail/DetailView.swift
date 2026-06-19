@@ -5,6 +5,8 @@ struct DetailView: View {
     let visitId: UUID
     let onBack: () -> Void
 
+    @State private var showTranscript = false
+
     var body: some View {
         Group {
             if viewModel.isLoading {
@@ -97,17 +99,31 @@ struct DetailView: View {
                         .padding()
                 }
 
-                // 完整转写
+                // 完整转写 — 显示文件名，点击查看内容
                 if let transcript = visit.transcriptText, !transcript.isEmpty {
                     GroupBox(label: Text("完整转写")) {
-                        if #available(iOS 15.0, *) {
-                            Text(transcript)
-                                .font(.body)
-                                .textSelection(.enabled)
-                        } else {
-                            SelectableTextView(text: transcript)
-                                .frame(minHeight: 100)
+                        Button {
+                            showTranscript = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "doc.text")
+                                    .foregroundColor(AppTheme.accentColor)
+                                Text(transcriptFileName)
+                                    .font(.subheadline)
+                                    .lineLimit(1)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(.secondary)
+                                    .font(.caption)
+                            }
                         }
+                    }
+                    .sheet(isPresented: $showTranscript) {
+                        TranscriptSheetView(
+                            title: transcriptFileName,
+                            text: transcript,
+                            onDismiss: { showTranscript = false }
+                        )
                     }
                 } else if visit.transcriptStatus == .processing {
                     HStack {
@@ -232,6 +248,49 @@ struct DetailView: View {
             }
         }
     }
+
+    // MARK: - 辅助
+
+    /// 从 transcriptFilePath 提取文件名
+    private var transcriptFileName: String {
+        if let path = viewModel.visit?.transcriptFilePath, !path.isEmpty {
+            return URL(fileURLWithPath: path).lastPathComponent
+        }
+        return "转写内容.txt"
+    }
+}
+
+// MARK: - 转写全文弹窗
+
+private struct TranscriptSheetView: View {
+    let title: String
+    let text: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                if #available(iOS 15.0, *) {
+                    Text(text)
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    SelectableTextView(text: text)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("关闭", action: onDismiss)
+                }
+            }
+        }
+    }
 }
 
 // MARK: - iOS 14 可选文本视图 (UITextView 包装)
@@ -243,10 +302,10 @@ private struct SelectableTextView: UIViewRepresentable {
         let textView = UITextView()
         textView.isEditable = false
         textView.isSelectable = true
-        textView.isScrollEnabled = false
+        textView.isScrollEnabled = true
         textView.dataDetectorTypes = []
         textView.backgroundColor = .clear
-        textView.textContainerInset = .zero
+        textView.textContainerInset = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
         textView.textContainer.lineFragmentPadding = 0
         textView.font = UIFont.preferredFont(forTextStyle: .body)
         textView.adjustsFontForContentSizeCategory = true
