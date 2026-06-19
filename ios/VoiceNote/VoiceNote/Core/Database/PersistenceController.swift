@@ -75,7 +75,6 @@ final class PersistenceController: ObservableObject {
             makeAttr("participantsJSON", .stringAttributeType),
             dateAttr("startTime", false),
             dateAttr("endTime", true),
-            makeAttr("locationPointsJSON", .stringAttributeType),
             makeAttr("transcriptText", .stringAttributeType),
             makeAttr("transcriptFilePath", .stringAttributeType),
             makeAttr("transcriptStatus", .stringAttributeType, false),
@@ -100,7 +99,6 @@ final class VisitEntity: NSManagedObject {
     @NSManaged var participantsJSON: String?
     @NSManaged var startTime: Date
     @NSManaged var endTime: Date?
-    @NSManaged var locationPointsJSON: String?
     @NSManaged var transcriptText: String?
     @NSManaged var transcriptFilePath: String?
     @NSManaged var transcriptStatus: String

@@ -2,7 +2,7 @@ import AVFoundation
 import Combine
 import Foundation
 
-/// 录音状态管理器 — 统筹录音/ASR/定位/总结全流程
+/// 录音状态管理器 — 统筹录音/ASR/总结全流程
 /// 对齐 Android: RecordingService.kt
 @MainActor
 final class RecordingManager: ObservableObject {
@@ -32,10 +32,8 @@ final class RecordingManager: ObservableObject {
     private var currentLlmPrompt: String?
 
     private var transcriptBuffer = ""
-    private var locationPoints: [LocationPoint] = []
 
     private var audioStreamTask: Task<Void, Never>?
-    private var locationTask: Task<Void, Never>?
     private var asrTask: Task<Void, Never>?
     private var durationTask: Task<Void, Never>?
 
@@ -67,7 +65,6 @@ final class RecordingManager: ObservableObject {
 
         transcriptBuffer = ""
         transcript = ""
-        locationPoints = []
         durationSeconds = 0
         batteryWarningShown = false
         isRecording = true
@@ -86,22 +83,24 @@ final class RecordingManager: ObservableObject {
             }
         }
 
-        // 获取单次位置
-        locationTask = Task {
-            if let point = await container.locationTracker.requestCurrentLocation() {
-                locationPoints.append(point)
-            }
-        }
-
         // 启动 ASR + 录音 pipeline
         performRecording()
     }
 
     private func performRecording() {
-        let asrURL = currentAsrURL
+        let asrURL = currentAsrURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let asrClient = container.asrClient
         let audioCapture = container.audioCapture
 
+        guard !asrURL.isEmpty else {
+            Log.recording("ASR URL 为空，跳过连接")
+            transcript = "请先在设置中配置 FunASR 服务地址"
+            isRecording = false
+            phase = .idle
+            return
+        }
+
+        Log.recording("Connecting to ASR: \(asrURL)")
         let asrStream = asrClient.connect(url: asrURL)
 
         // 主流程：等待连接 → 握手 → 采集音频（顺序执行，对齐 Android）
@@ -178,114 +177,114 @@ final class RecordingManager: ObservableObject {
     func stopRecording() {
         phase = .stopping
         durationTask?.cancel()
-        locationTask?.cancel()
         container.audioCapture.stop()
 
         // 发送 ASR 结束信号（触发离线纠错）
         container.asrClient.sendEnd()
 
-        Task {
-            // 等待最终 ASR 离线结果返回
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-            container.asrClient.disconnect()
-            audioStreamTask?.cancel()
-            asrTask?.cancel()
-
-            // 先定稿音频文件并写入数据库（确保离线重试时路径可用）
-            if let visitId = currentVisitId, let pcmURL = currentPcmURL {
-                let wavPath = finalizeAudio(visitId: visitId, pcmURL: pcmURL)
-                if let path = wavPath {
-                    try? await container.visitRepository.updateAudioFilePath(
-                        visitId,
-                        path: path,
-                        endTime: Date(),
-                        locationPoints: locationPoints
-                    )
-                }
-                currentPcmURL = nil
-            }
-
-            await generateSummary()
-        }
-    }
-
-    // MARK: - 生成总结
-
-    private func generateSummary() async {
-        guard let visitId = currentVisitId else { return }
-
-        phase = .generatingSummary
-        let transcriptText = transcriptBuffer
-
-        if transcriptText.isBlank, !currentAsrURL.isEmpty {
-            // 实时 ASR 失败，尝试离线重试
-            do {
-                let audioPath = try await container.visitRepository.getVisit(id: visitId)?.audioFilePath ?? ""
-                if !audioPath.isEmpty {
-                    try await container.visitRepository.updateTranscriptStatus(visitId, status: .processing)
-                    let result = await container.asrClient.processFile(
-                        audioFilePath: audioPath,
-                        serverUrl: currentAsrURL
-                    )
-                    if case .success(let text) = result {
-                        transcript = text
-                        transcriptBuffer = text
-                    }
-                }
-            } catch {}
-        }
-
-        let finalTranscript = transcriptBuffer.isBlank
-            ? "暂时无法获取转写内容"
-            : transcriptBuffer
-
-        // 保存转写文件
-        let transcriptFileURL = saveTranscriptToFile(visitId: visitId, text: finalTranscript)
-
-        try? await container.visitRepository.updateTranscript(
-            visitId,
-            text: finalTranscript,
-            filePath: transcriptFileURL?.path ?? ""
-        )
-        try? await container.visitRepository.updateTranscriptStatus(
-            visitId,
-            status: finalTranscript == "暂时无法获取转写内容" ? .unavailable : .completed
-        )
-
-        // LLM 生成总结
-        if finalTranscript != "暂时无法获取转写内容", !currentLlmURL.isEmpty {
-            try? await container.visitRepository.updateSummaryStatus(visitId, status: .processing)
-
-            let result = await retryLlm(transcript: finalTranscript)
-            if case .success(let summary) = result {
-                try? await container.visitRepository.updateSummary(visitId, summary: summary)
-            } else {
-                try? await container.visitRepository.updateSummaryStatus(visitId, status: .unavailable)
-            }
-        }
-
+        // 立即标记录音结束 → UI 马上返回
         isRecording = false
         phase = .idle
-    }
 
-    private func retryLlm(transcript: String) async -> Result<VisitSummary, Error> {
-        let delays: [TimeInterval] = [20, 40, 80, 160, 320]
+        // 所有收尾工作放到后台执行，不阻塞 UI
+        let visitId = currentVisitId
+        let pcmURL = currentPcmURL
+        let asrURL = currentAsrURL
+        let llmURL = currentLlmURL
+        let llmKey = currentLlmKey
+        let llmModel = currentLlmModel
+        let llmPrompt = currentLlmPrompt
+        let asrClient = container.asrClient
+        let audioStreamT = audioStreamTask
+        let asrT = asrTask
 
-        for (i, delay) in delays.enumerated() {
-            if i > 0 {
-                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        Task.detached(priority: .utility) { [weak self] in
+            // 等待 ASR 离线结果（.final 事件在此期间到达）
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            asrClient.disconnect()
+            audioStreamT?.cancel()
+            asrT?.cancel()
+
+            guard let self else { return }
+
+            // 读取最终转写文本（在 3s 等待之后，确保收到 .final）
+            let transcriptText = await MainActor.run { self.transcriptBuffer }
+
+            // 定稿音频文件
+            if let visitId, let pcmURL {
+                let wavPath = await MainActor.run {
+                    self.finalizeAudio(visitId: visitId, pcmURL: pcmURL)
+                }
+                if let path = wavPath {
+                    try? await self.container.visitRepository.updateAudioFilePath(
+                        visitId, path: path, endTime: Date()
+                    )
+                }
             }
-            let result = await container.llmClient.generateSummary(
-                transcript: transcript,
-                apiUrl: currentLlmURL,
-                apiKey: currentLlmKey,
-                model: currentLlmModel,
-                customPrompt: currentLlmPrompt
-            )
-            if case .success = result { return result }
+
+            // 保存转写
+            let savedText = transcriptText.isBlank
+                ? "暂时无法获取转写内容"
+                : transcriptText
+            let fileURL = await MainActor.run {
+                self.saveTranscriptToFile(visitId: visitId!, text: savedText)
+            }
+            if let visitId {
+                try? await self.container.visitRepository.updateTranscript(
+                    visitId, text: savedText, filePath: fileURL?.path ?? ""
+                )
+                try? await self.container.visitRepository.updateTranscriptStatus(
+                    visitId,
+                    status: savedText == "暂时无法获取转写内容" ? .unavailable : .completed
+                )
+            }
+
+            // 如果实时转写为空，尝试离线 ASR 重试
+            var finalText = savedText
+            if savedText == "暂时无法获取转写内容", !asrURL.isEmpty, let visitId {
+                try? await self.container.visitRepository.updateTranscriptStatus(visitId, status: .processing)
+                if let visit = try? await self.container.visitRepository.getVisit(id: visitId),
+                   let audioPath = visit.audioFilePath, !audioPath.isEmpty {
+                    let result = await asrClient.processFile(audioFilePath: audioPath, serverUrl: asrURL)
+                    if case .success(let text) = result {
+                        finalText = text
+                        let retryFileURL = await MainActor.run {
+                            self.saveTranscriptToFile(visitId: visitId, text: text)
+                        }
+                        try? await self.container.visitRepository.updateTranscript(
+                            visitId, text: text, filePath: retryFileURL?.path ?? ""
+                        )
+                        try? await self.container.visitRepository.updateTranscriptStatus(visitId, status: .completed)
+                    } else {
+                        try? await self.container.visitRepository.updateTranscriptStatus(visitId, status: .unavailable)
+                    }
+                }
+            }
+
+            // LLM 总结（5 次重试，不阻塞 UI）—— 只有转写完成才执行
+            if finalText != "暂时无法获取转写内容", !llmURL.isEmpty, let visitId {
+                try? await self.container.visitRepository.updateSummaryStatus(visitId, status: .processing)
+
+                let delays: [TimeInterval] = [20, 40, 80, 160, 320]
+                var summaryResult: Result<VisitSummary, Error> = .failure(LLMError.parseFailed("未开始"))
+                for (i, delay) in delays.enumerated() {
+                    if i > 0 { try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+                    let r = await self.container.llmClient.generateSummary(
+                        transcript: finalText, apiUrl: llmURL, apiKey: llmKey,
+                        model: llmModel, customPrompt: llmPrompt
+                    )
+                    if case .success = r { summaryResult = r; break }
+                }
+                if case .success(let summary) = summaryResult {
+                    try? await self.container.visitRepository.updateSummary(visitId, summary: summary)
+                } else {
+                    try? await self.container.visitRepository.updateSummaryStatus(visitId, status: .unavailable)
+                }
+            }
         }
-        return .failure(LLMError.parseFailed("所有重试均已失败"))
+        currentPcmURL = nil
     }
+
 
     // MARK: - 文件管理
 

@@ -7,7 +7,7 @@ protocol VisitRepository {
     func createVisit(_ visit: Visit) async throws -> UUID
 
     /// 更新音频文件路径
-    func updateAudioFilePath(_ visitId: UUID, path: String, endTime: Date, locationPoints: [LocationPoint]) async throws
+    func updateAudioFilePath(_ visitId: UUID, path: String, endTime: Date) async throws
 
     /// 更新转写文本
     func updateTranscript(_ visitId: UUID, text: String, filePath: String) async throws

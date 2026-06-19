@@ -21,13 +21,11 @@
 		793370B82FE40E1800752EE2 /* HistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370942FE40E1600752EE2 /* HistoryViewModel.swift */; };
 		793370B92FE40E1800752EE2 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370952FE40E1600752EE2 /* HistoryView.swift */; };
 		793370BA2FE40E1800752EE2 /* VisitRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370982FE40E1600752EE2 /* VisitRepository.swift */; };
-		793370BB2FE40E1800752EE2 /* LocationPoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7933709A2FE40E1600752EE2 /* LocationPoint.swift */; };
 		793370BC2FE40E1800752EE2 /* VisitSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7933709B2FE40E1600752EE2 /* VisitSummary.swift */; };
 		793370BD2FE40E1800752EE2 /* Visit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7933709C2FE40E1600752EE2 /* Visit.swift */; };
 		793370BE2FE40E1800752EE2 /* PersistenceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7933709F2FE40E1700752EE2 /* PersistenceController.swift */; };
 		793370BF2FE40E1800752EE2 /* LLMClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370A12FE40E1700752EE2 /* LLMClient.swift */; };
 		793370C02FE40E1800752EE2 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370A32FE40E1700752EE2 /* AppContainer.swift */; };
-		793370C12FE40E1800752EE2 /* LocationTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370A52FE40E1700752EE2 /* LocationTracker.swift */; };
 		793370C22FE40E1800752EE2 /* AudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370A72FE40E1700752EE2 /* AudioCapture.swift */; };
 		793370C32FE40E1800752EE2 /* FunASRClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370A92FE40E1700752EE2 /* FunASRClient.swift */; };
 		793370C42FE40E1800752EE2 /* RecordingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370AB2FE40E1700752EE2 /* RecordingManager.swift */; };
@@ -72,13 +70,11 @@
 		793370942FE40E1600752EE2 /* HistoryViewModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HistoryViewModel.swift; sourceTree = "<group>"; };
 		793370952FE40E1600752EE2 /* HistoryView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		793370982FE40E1600752EE2 /* VisitRepository.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = VisitRepository.swift; sourceTree = "<group>"; };
-		7933709A2FE40E1600752EE2 /* LocationPoint.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LocationPoint.swift; sourceTree = "<group>"; };
 		7933709B2FE40E1600752EE2 /* VisitSummary.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = VisitSummary.swift; sourceTree = "<group>"; };
 		7933709C2FE40E1600752EE2 /* Visit.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Visit.swift; sourceTree = "<group>"; };
 		7933709F2FE40E1700752EE2 /* PersistenceController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PersistenceController.swift; sourceTree = "<group>"; };
 		793370A12FE40E1700752EE2 /* LLMClient.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LLMClient.swift; sourceTree = "<group>"; };
 		793370A32FE40E1700752EE2 /* AppContainer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
-		793370A52FE40E1700752EE2 /* LocationTracker.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LocationTracker.swift; sourceTree = "<group>"; };
 		793370A72FE40E1700752EE2 /* AudioCapture.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudioCapture.swift; sourceTree = "<group>"; };
 		793370A92FE40E1700752EE2 /* FunASRClient.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FunASRClient.swift; sourceTree = "<group>"; };
 		793370AB2FE40E1700752EE2 /* RecordingManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = RecordingManager.swift; sourceTree = "<group>"; };
@@ -239,7 +235,6 @@
 		793370992FE40E1600752EE2 /* Model */ = {
 			isa = PBXGroup;
 			children = (
-				7933709A2FE40E1600752EE2 /* LocationPoint.swift */,
 				7933709B2FE40E1600752EE2 /* VisitSummary.swift */,
 				7933709C2FE40E1600752EE2 /* Visit.swift */,
 			);
@@ -252,7 +247,6 @@
 				7933709E2FE40E1700752EE2 /* Database */,
 				793370A02FE40E1700752EE2 /* LLM */,
 				793370A22FE40E1700752EE2 /* DI */,
-				793370A42FE40E1700752EE2 /* Location */,
 				793370A62FE40E1700752EE2 /* Audio */,
 				793370A82FE40E1700752EE2 /* ASR */,
 				793370AA2FE40E1700752EE2 /* Service */,
@@ -282,14 +276,6 @@
 				793370A32FE40E1700752EE2 /* AppContainer.swift */,
 			);
 			path = DI;
-			sourceTree = "<group>";
-		};
-		793370A42FE40E1700752EE2 /* Location */ = {
-			isa = PBXGroup;
-			children = (
-				793370A52FE40E1700752EE2 /* LocationTracker.swift */,
-			);
-			path = Location;
 			sourceTree = "<group>";
 		};
 		793370A62FE40E1700752EE2 /* Audio */ = {
@@ -473,7 +459,6 @@
 				793370B92FE40E1800752EE2 /* HistoryView.swift in Sources */,
 				793370B82FE40E1800752EE2 /* HistoryViewModel.swift in Sources */,
 				793370B12FE40E1800752EE2 /* HomeViewModel.swift in Sources */,
-				793370C12FE40E1800752EE2 /* LocationTracker.swift in Sources */,
 				793370C32FE40E1800752EE2 /* FunASRClient.swift in Sources */,
 				793370BD2FE40E1800752EE2 /* Visit.swift in Sources */,
 				793370B42FE40E1800752EE2 /* RecordingViewModel.swift in Sources */,
@@ -481,7 +466,6 @@
 				793370B02FE40E1800752EE2 /* SettingsViewModel.swift in Sources */,
 				793370C02FE40E1800752EE2 /* AppContainer.swift in Sources */,
 				793370BC2FE40E1800752EE2 /* VisitSummary.swift in Sources */,
-				793370BB2FE40E1800752EE2 /* LocationPoint.swift in Sources */,
 				793370C42FE40E1800752EE2 /* RecordingManager.swift in Sources */,
 				793370C82FE40E9000752EE2 /* AudioPlayer.swift in Sources */,
 				793370B62FE40E1800752EE2 /* DetailViewModel.swift in Sources */,
@@ -722,7 +706,7 @@
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -742,7 +726,7 @@
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -761,7 +745,7 @@
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = VoiceNote;
 			};
 			name = Debug;
@@ -781,7 +765,7 @@
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = VoiceNote;
 			};
 			name = Release;

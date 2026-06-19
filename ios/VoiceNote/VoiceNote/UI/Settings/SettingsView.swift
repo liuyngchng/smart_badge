@@ -96,7 +96,6 @@ struct SettingsView: View {
                 Button("保存") {
                     viewModel.save()
                 }
-                .disabled(!viewModel.hasChanges)
             }
         }
     }

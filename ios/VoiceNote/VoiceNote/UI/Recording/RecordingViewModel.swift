@@ -45,10 +45,10 @@ final class RecordingViewModel: ObservableObject {
             defer { Task { @MainActor in isStarting = false } }
 
             // 获取设置
-            let llmURL = UserDefaults.standard.string(forKey: "llm_url") ?? ""
+            let llmURL = UserDefaults.standard.string(forKey: "llm_url") ?? "https://api.deepseek.com"
             let llmKey = UserDefaults.standard.string(forKey: "llm_key") ?? ""
             let llmModel = UserDefaults.standard.string(forKey: "llm_model") ?? "deepseek-v4-pro"
-            let asrURL = UserDefaults.standard.string(forKey: "asr_url") ?? ""
+            let asrURL = UserDefaults.standard.string(forKey: "asr_url") ?? "ws://192.168.1.110:10095"
 
             let visit = Visit(
                 clientName: title,
@@ -63,6 +63,10 @@ final class RecordingViewModel: ObservableObject {
             do {
                 let visitId = try await container.visitRepository.createVisit(visit)
                 currentVisitId = visitId
+
+                // 标记转写和总结为处理中
+                try? await container.visitRepository.updateTranscriptStatus(visitId, status: .processing)
+                try? await container.visitRepository.updateSummaryStatus(visitId, status: .processing)
 
                 // 开始写音频文件（仅调用一次，pcmURL 由 RecordingManager 内部持有）
                 _ = recordingManager.startWritingAudio(visitId: visitId)
@@ -113,5 +117,8 @@ final class RecordingViewModel: ObservableObject {
     func stopVisit() {
         isStopping = true
         recordingManager.stopRecording()
+        // 立即返回主界面
+        isRecording = false
+        isStopping = false
     }
 }

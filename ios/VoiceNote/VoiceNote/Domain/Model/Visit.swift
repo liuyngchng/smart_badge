@@ -10,7 +10,6 @@ struct Visit: Identifiable, Codable {
     var participants: [String]
     var startTime: Date
     var endTime: Date?
-    var locationPoints: [LocationPoint]
     var transcriptText: String?
     var transcriptFilePath: String?
     var transcriptStatus: ProcessingStatus
@@ -26,7 +25,6 @@ struct Visit: Identifiable, Codable {
         participants: [String] = [],
         startTime: Date = Date(),
         endTime: Date? = nil,
-        locationPoints: [LocationPoint] = [],
         transcriptText: String? = nil,
         transcriptFilePath: String? = nil,
         transcriptStatus: ProcessingStatus = .pending,
@@ -41,7 +39,6 @@ struct Visit: Identifiable, Codable {
         self.participants = participants
         self.startTime = startTime
         self.endTime = endTime
-        self.locationPoints = locationPoints
         self.transcriptText = transcriptText
         self.transcriptFilePath = transcriptFilePath
         self.transcriptStatus = transcriptStatus

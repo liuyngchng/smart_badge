@@ -30,11 +30,10 @@ final class VisitRepositoryImpl: VisitRepository {
         return visit.id
     }
 
-    func updateAudioFilePath(_ visitId: UUID, path: String, endTime: Date, locationPoints: [LocationPoint]) async throws {
+    func updateAudioFilePath(_ visitId: UUID, path: String, endTime: Date) async throws {
         guard let entity = try fetchEntity(id: visitId) else { return }
         entity.audioFilePath = path
         entity.endTime = endTime
-        entity.locationPointsJSON = try? encoder.encodeString(locationPoints)
         try context.save()
     }
 
@@ -118,7 +117,6 @@ final class VisitRepositoryImpl: VisitRepository {
             participants: (try? decoder.decode([String].self, from: e.participantsJSON)) ?? [],
             startTime: e.startTime,
             endTime: e.endTime,
-            locationPoints: (try? decoder.decode([LocationPoint].self, from: e.locationPointsJSON)) ?? [],
             transcriptText: e.transcriptText,
             transcriptFilePath: e.transcriptFilePath,
             transcriptStatus: ProcessingStatus(rawValue: e.transcriptStatus) ?? .pending,
