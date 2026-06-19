@@ -50,20 +50,17 @@ struct SettingsView: View {
                         .foregroundColor(testResultColor(viewModel.llmTestResult))
                 }
 
-                HStack {
-                    Spacer()
-                    Button(action: { viewModel.test() }) {
-                        Label("测试", systemImage: "checkmark.circle")
-                            .font(.caption)
+                Button(action: { viewModel.test() }) {
+                    HStack {
+                        Text("开始测试")
+                            .foregroundColor(viewModel.isTesting ? .secondary : .accentColor)
+                        Spacer()
+                        if viewModel.isTesting {
+                            ProgressView()
+                        }
                     }
-                    .disabled(viewModel.isTesting)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.accentColor)
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
-                    Spacer()
                 }
+                .disabled(viewModel.isTesting)
             }
 
             // 版本号
