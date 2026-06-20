@@ -165,14 +165,39 @@ private struct RootView: View {
     // MARK: - Recording 录音页
 
     private var recordingScreen: some View {
-        RecordingView(
-            viewModel: RecordingViewModel(container: container),
-            onBack: { showRecording = false },
-            onVisitComplete: { id in
-                showRecording = false
+        ZStack {
+            // 录音页本身
+            RecordingView(
+                viewModel: RecordingViewModel(container: container),
+                onBack: { showRecording = false },
+                onVisitComplete: { id in
+                    detailId = id
+                    showDetail = true
+                }
+            )
+            .navigationBarBackButtonHidden(true)
+
+            // 隐藏的 detail 链接，停录音时直接在录音页上 push
+            // 返回时同时关闭 detail 和 recording
+            if let id = detailId {
+                NavigationLink(
+                    destination: DetailView(
+                        viewModel: DetailViewModel(container: container),
+                        visitId: id,
+                        onBack: {
+                            showDetail = false
+                            showRecording = false
+                        }
+                    )
+                    .navigationBarBackButtonHidden(true),
+                    isActive: Binding(
+                        get: { showDetail },
+                        set: { showDetail = $0 }
+                    ),
+                    label: { EmptyView() }
+                )
             }
-        )
-        .navigationBarBackButtonHidden(true)
+        }
     }
 
     // MARK: - Detail 详情页

@@ -5,6 +5,7 @@ struct DetailView: View {
     let visitId: UUID
     let onBack: () -> Void
 
+    @State private var selectedTab = 0
     @State private var showTranscript = false
 
     var body: some View {
@@ -30,9 +31,32 @@ struct DetailView: View {
     }
 
     private func content(_ visit: VoiceRecord) -> some View {
+        VStack(spacing: 0) {
+            // 选项卡
+            Picker("", selection: $selectedTab) {
+                Text("基本信息").tag(0)
+                Text("转写").tag(1)
+                Text("总结").tag(2)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+            // 内容区
+            switch selectedTab {
+            case 0: basicInfoTab(visit)
+            case 1: transcriptTab(visit)
+            case 2: summaryTab(visit)
+            default: EmptyView()
+            }
+        }
+    }
+
+    // MARK: - 基本信息
+
+    private func basicInfoTab(_ visit: VoiceRecord) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                // 基本信息
                 GroupBox(label: Text("基本信息")) {
                     infoRow("标题", visit.title)
                     if !visit.memo.isEmpty {
@@ -55,8 +79,87 @@ struct DetailView: View {
                 if visit.audioFilePath != nil {
                     audioPlaybackSection
                 }
+            }
+            .padding()
+        }
+    }
 
-                // AI 总结
+    // MARK: - 转写
+
+    private func transcriptTab(_ visit: VoiceRecord) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                if let transcript = visit.transcriptText, !transcript.isEmpty {
+                    GroupBox(label: Text("完整转写")) {
+                        Button {
+                            showTranscript = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "doc.text")
+                                    .foregroundColor(AppTheme.accentColor)
+                                Text(transcriptFileName)
+                                    .font(.subheadline)
+                                    .lineLimit(1)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(.secondary)
+                                    .font(.caption)
+                            }
+                        }
+                    }
+                    .sheet(isPresented: $showTranscript) {
+                        TranscriptSheetView(
+                            title: transcriptFileName,
+                            text: transcript,
+                            onDismiss: { showTranscript = false }
+                        )
+                    }
+                } else if visit.transcriptStatus == .processing {
+                    HStack {
+                        ProgressView()
+                        Text("正在转写...")
+                            .foregroundColor(.secondary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                } else if visit.transcriptStatus == .unavailable {
+                    VStack(spacing: 8) {
+                        Text("转写失败")
+                            .foregroundColor(.secondary)
+                        Button {
+                            viewModel.retryTranscript()
+                        } label: {
+                            HStack {
+                                if viewModel.isRetryingTranscript {
+                                    ProgressView().scaleEffect(0.8)
+                                }
+                                Text(viewModel.isRetryingTranscript ? "重试中..." : "重新转写")
+                            }
+                        }
+                        .disabled(viewModel.isRetryingTranscript)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                } else if visit.transcriptStatus == .pending {
+                    HStack {
+                        ProgressView().scaleEffect(0.8)
+                        Text("转写准备中...")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding()
+        }
+    }
+
+    // MARK: - 总结
+
+    private func summaryTab(_ visit: VoiceRecord) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
                 if let summary = visit.summary {
                     GroupBox(label: Text("AI 总结")) {
                         if !summary.topics.isEmpty {
@@ -93,6 +196,7 @@ struct DetailView: View {
                             .foregroundColor(.secondary)
                     }
                     .padding()
+                    .frame(maxWidth: .infinity)
                 } else if visit.summaryStatus == .unavailable {
                     VStack(spacing: 8) {
                         Text("总结生成失败")
@@ -102,8 +206,7 @@ struct DetailView: View {
                         } label: {
                             HStack {
                                 if viewModel.isRetryingSummary {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
+                                    ProgressView().scaleEffect(0.8)
                                 }
                                 Text(viewModel.isRetryingSummary ? "重试中..." : "重新生成")
                             }
@@ -111,77 +214,16 @@ struct DetailView: View {
                         .disabled(viewModel.isRetryingSummary)
                     }
                     .padding()
+                    .frame(maxWidth: .infinity)
                 } else if visit.summaryStatus == .pending {
                     HStack {
-                        ProgressView()
-                            .scaleEffect(0.8)
+                        ProgressView().scaleEffect(0.8)
                         Text("等待转写完成...")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
                     .padding()
-                }
-
-                // 完整转写 — 显示文件名，点击查看内容
-                if let transcript = visit.transcriptText, !transcript.isEmpty {
-                    GroupBox(label: Text("完整转写")) {
-                        Button {
-                            showTranscript = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "doc.text")
-                                    .foregroundColor(AppTheme.accentColor)
-                                Text(transcriptFileName)
-                                    .font(.subheadline)
-                                    .lineLimit(1)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundColor(.secondary)
-                                    .font(.caption)
-                            }
-                        }
-                    }
-                    .sheet(isPresented: $showTranscript) {
-                        TranscriptSheetView(
-                            title: transcriptFileName,
-                            text: transcript,
-                            onDismiss: { showTranscript = false }
-                        )
-                    }
-                } else if visit.transcriptStatus == .processing {
-                    HStack {
-                        ProgressView()
-                        Text("正在转写...")
-                            .foregroundColor(.secondary)
-                    }
-                    .padding()
-                } else if visit.transcriptStatus == .unavailable {
-                    VStack(spacing: 8) {
-                        Text("转写失败")
-                            .foregroundColor(.secondary)
-                        Button {
-                            viewModel.retryTranscript()
-                        } label: {
-                            HStack {
-                                if viewModel.isRetryingTranscript {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                }
-                                Text(viewModel.isRetryingTranscript ? "重试中..." : "重新转写")
-                            }
-                        }
-                        .disabled(viewModel.isRetryingTranscript)
-                    }
-                    .padding()
-                } else if visit.transcriptStatus == .pending {
-                    HStack {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                        Text("等待录音完成...")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding()
+                    .frame(maxWidth: .infinity)
                 }
             }
             .padding()
@@ -194,7 +236,6 @@ struct DetailView: View {
         GroupBox(label: Label("录音回放", systemImage: "waveform")) {
             VStack(spacing: 12) {
                 if viewModel.audioPlayer.isReady {
-                    // 进度条
                     VStack(spacing: 4) {
                         Slider(
                             value: Binding(
@@ -205,58 +246,41 @@ struct DetailView: View {
                         )
                         .accentColor(AppTheme.accentColor)
 
-                        // 时间标签
                         HStack {
                             Text(viewModel.formatTime(viewModel.audioPlayer.currentTime))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                .font(.caption).foregroundColor(.secondary)
                             Spacer()
                             Text(viewModel.formatTime(viewModel.audioPlayer.duration))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                .font(.caption).foregroundColor(.secondary)
                         }
                     }
 
-                    // 播放控制按钮
                     HStack(spacing: 30) {
-                        // 后退 15 秒
                         Button {
-                            viewModel.audioPlayer.seek(
-                                to: viewModel.audioPlayer.currentTime - 15
-                            )
+                            viewModel.audioPlayer.seek(to: viewModel.audioPlayer.currentTime - 15)
                         } label: {
-                            Image(systemName: "gobackward")
-                                .font(.title2)
+                            Image(systemName: "gobackward").font(.title2)
                         }
 
-                        // 播放/暂停
                         Button {
                             viewModel.audioPlayer.togglePlayPause()
                         } label: {
                             Image(systemName: viewModel.audioPlayer.isPlaying
-                                  ? "pause.circle.fill"
-                                  : "play.circle.fill"
-                            )
+                                  ? "pause.circle.fill" : "play.circle.fill")
                             .font(.system(size: 44))
                             .foregroundColor(AppTheme.accentColor)
                         }
 
-                        // 前进 15 秒
                         Button {
-                            viewModel.audioPlayer.seek(
-                                to: viewModel.audioPlayer.currentTime + 15
-                            )
+                            viewModel.audioPlayer.seek(to: viewModel.audioPlayer.currentTime + 15)
                         } label: {
-                            Image(systemName: "goforward")
-                                .font(.title2)
+                            Image(systemName: "goforward").font(.title2)
                         }
                     }
                 } else {
                     HStack {
-                        Image(systemName: "exclamationmark.triangle")
-                            .foregroundColor(.orange)
-                        Text("音频文件不可用")
-                            .foregroundColor(.secondary)
+                        Image(systemName: "exclamationmark.triangle").foregroundColor(.orange)
+                        Text("音频文件不可用").foregroundColor(.secondary)
                     }
                 }
             }
@@ -264,15 +288,7 @@ struct DetailView: View {
         }
     }
 
-    // MARK: - iOS 14 日期格式化 (Date.formatted() 仅 iOS 15+)
-
-    private func formattedDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
-    }
+    // MARK: - 辅助视图
 
     private func infoRow(_ label: String, _ value: String) -> some View {
         HStack(alignment: .top) {
@@ -299,9 +315,14 @@ struct DetailView: View {
         }
     }
 
-    // MARK: - 辅助
+    private func formattedDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
 
-    /// 从 transcriptFilePath 提取文件名
     private var transcriptFileName: String {
         if let path = viewModel.visit?.transcriptFilePath, !path.isEmpty {
             return URL(fileURLWithPath: path).lastPathComponent
@@ -335,7 +356,6 @@ private struct TranscriptSheetView: View {
                     }
                 }
             } else {
-                // iOS 14: UITextView 自带滚动，不套 ScrollView
                 SelectableTextView(text: text)
                     .padding()
                     .navigationTitle(title)
@@ -350,7 +370,7 @@ private struct TranscriptSheetView: View {
     }
 }
 
-// MARK: - iOS 14 可选文本视图 (UITextView 包装)
+// MARK: - iOS 14 可选文本视图
 
 private struct SelectableTextView: UIViewRepresentable {
     let text: String
