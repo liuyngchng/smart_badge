@@ -97,7 +97,7 @@ struct RecordingView: View {
                         } else {
                             Image(systemName: "stop.fill")
                         }
-                        Text("结束录音")
+                        Text("结束")
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
@@ -177,6 +177,8 @@ struct RecordingView: View {
                     HStack {
                         if viewModel.isStarting {
                             ProgressView()
+                        } else {
+                            Image(systemName: "mic.fill")
                         }
                         Text("开始录音")
                     }

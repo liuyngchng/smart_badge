@@ -1,12 +1,25 @@
 import SwiftUI
 
+// MARK: - Sheet 类型 (iOS 14 仅支持单 sheet，用枚举统一)
+private enum ActiveSheet: Identifiable {
+    case transcript
+    case share(URL)
+
+    var id: String {
+        switch self {
+        case .transcript: return "transcript"
+        case .share: return "share"
+        }
+    }
+}
+
 struct DetailView: View {
     @StateObject var viewModel: DetailViewModel
     let visitId: UUID
     let onBack: () -> Void
 
     @State private var selectedTab = 0
-    @State private var showTranscript = false
+    @State private var activeSheet: ActiveSheet?
 
     var body: some View {
         Group {
@@ -28,6 +41,16 @@ struct DetailView: View {
         }
         .onAppear { viewModel.loadRecord(id: visitId) }
         .onDisappear { viewModel.audioPlayer.stop() }
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .transcript:
+                if let t = viewModel.visit?.transcriptText {
+                    TranscriptSheetView(title: transcriptFileName, text: t)
+                }
+            case .share(let url):
+                ActivitySheet(activityItems: [url])
+            }
+        }
     }
 
     private func content(_ visit: VoiceRecord) -> some View {
@@ -92,7 +115,7 @@ struct DetailView: View {
                 if let transcript = visit.transcriptText, !transcript.isEmpty {
                     GroupBox(label: Text("完整转写")) {
                         Button {
-                            showTranscript = true
+                            activeSheet = .transcript
                         } label: {
                             HStack {
                                 Image(systemName: "doc.text")
@@ -106,12 +129,6 @@ struct DetailView: View {
                                     .font(.caption)
                             }
                         }
-                    }
-                    .sheet(isPresented: $showTranscript) {
-                        TranscriptSheetView(
-                            title: transcriptFileName,
-                            text: transcript
-                        )
                     }
                 } else if visit.transcriptStatus == .processing {
                     HStack {
@@ -142,20 +159,35 @@ struct DetailView: View {
                 // 手动重试入口（转写完成或失败后均可手动重试）
                 if visit.transcriptStatus == .completed || visit.transcriptStatus == .unavailable {
                     Divider().padding(.horizontal)
-                    Button {
-                        viewModel.retryTranscript()
-                    } label: {
-                        HStack {
-                            if viewModel.isRetryingTranscript {
-                                ProgressView().scaleEffect(0.8)
-                            } else {
-                                Image(systemName: "arrow.clockwise")
+                    HStack(spacing: 24) {
+                        Button {
+                            viewModel.retryTranscript()
+                        } label: {
+                            HStack(spacing: 4) {
+                                if viewModel.isRetryingTranscript {
+                                    ProgressView().scaleEffect(0.8)
+                                } else {
+                                    Image(systemName: "arrow.clockwise")
+                                }
+                                Text(viewModel.isRetryingTranscript ? "重试中..." : "重新转写")
+                                    .font(.subheadline)
                             }
-                            Text(viewModel.isRetryingTranscript ? "重试中..." : "重新转写")
-                                .font(.subheadline)
+                        }
+                        .disabled(viewModel.isRetryingTranscript)
+
+                        if let path = visit.transcriptFilePath, !path.isEmpty,
+                           FileManager.default.fileExists(atPath: path) {
+                            Button {
+                                activeSheet = .share(URL(fileURLWithPath: path))
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "square.and.arrow.up")
+                                    Text("导出")
+                                        .font(.subheadline)
+                                }
+                            }
                         }
                     }
-                    .disabled(viewModel.isRetryingTranscript)
                     .padding(.bottom, 8)
                 }
             }
@@ -327,6 +359,18 @@ struct DetailView: View {
                 }
             }
             .padding(.vertical, 4)
+
+            // 导出音频
+            if let path = viewModel.visit?.audioFilePath, FileManager.default.fileExists(atPath: path) {
+                Divider()
+                Button {
+                    activeSheet = .share(URL(fileURLWithPath: path))
+                } label: {
+                    Label("导出", systemImage: "square.and.arrow.up")
+                        .font(.subheadline)
+                }
+                .padding(.vertical, 4)
+            }
         }
     }
 
@@ -392,6 +436,18 @@ struct DetailView: View {
         }
         return "转写内容.txt"
     }
+}
+
+// MARK: - 分享面板 (UIActivityViewController, iOS 14 兼容)
+
+private struct ActivitySheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiView: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - 转写全文弹窗
