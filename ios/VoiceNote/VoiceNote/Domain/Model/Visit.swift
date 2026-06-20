@@ -15,6 +15,7 @@ struct VoiceRecord: Identifiable, Codable {
     var summaryStatus: ProcessingStatus
     var audioFilePath: String?
     var summary: RecordSummary?
+    var summaryGeneratedAt: Date?
 
     init(
         id: UUID = UUID(),
@@ -29,7 +30,8 @@ struct VoiceRecord: Identifiable, Codable {
         transcriptStatus: ProcessingStatus = .pending,
         summaryStatus: ProcessingStatus = .pending,
         audioFilePath: String? = nil,
-        summary: RecordSummary? = nil
+        summary: RecordSummary? = nil,
+        summaryGeneratedAt: Date? = nil
     ) {
         self.id = id
         self.title = title
@@ -44,6 +46,7 @@ struct VoiceRecord: Identifiable, Codable {
         self.summaryStatus = summaryStatus
         self.audioFilePath = audioFilePath
         self.summary = summary
+        self.summaryGeneratedAt = summaryGeneratedAt
     }
 }
 

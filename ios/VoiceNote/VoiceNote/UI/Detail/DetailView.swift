@@ -110,8 +110,7 @@ struct DetailView: View {
                     .sheet(isPresented: $showTranscript) {
                         TranscriptSheetView(
                             title: transcriptFileName,
-                            text: transcript,
-                            onDismiss: { showTranscript = false }
+                            text: transcript
                         )
                     }
                 } else if visit.transcriptStatus == .processing {
@@ -170,37 +169,59 @@ struct DetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if let summary = visit.summary {
-                    VStack(alignment: .leading, spacing: 16) {
-                        if !summary.topics.isEmpty {
-                            summarySection("议题", summary.topics, color: .blue)
-                        }
-                        if !summary.conclusions.isEmpty {
-                            summarySection("结论", summary.conclusions, color: .green)
-                        }
-                        if !summary.todos.isEmpty {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Label("待办", systemImage: "list.bullet")
-                                    .font(.subheadline)
-                                    .foregroundColor(.orange)
-                                ForEach(summary.todos) { todo in
-                                    HStack {
-                                        Text("• \(todo.task)")
-                                        if !todo.owner.isEmpty {
-                                            Text("(\(todo.owner))")
-                                                .foregroundColor(.secondary)
-                                                .font(.caption)
+                    let isEmpty = summary.topics.isEmpty
+                        && summary.conclusions.isEmpty
+                        && summary.todos.isEmpty
+                        && summary.nextSteps.isEmpty
+
+                    if isEmpty {
+                        Text("未能提取到有效总结内容\n转写文本可能过短或信息不足")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        VStack(alignment: .leading, spacing: 16) {
+                            if !summary.topics.isEmpty {
+                                summarySection("议题", summary.topics, color: .blue)
+                            }
+                            if !summary.conclusions.isEmpty {
+                                summarySection("结论", summary.conclusions, color: .green)
+                            }
+                            if !summary.todos.isEmpty {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Label("待办", systemImage: "list.bullet")
+                                        .font(.subheadline)
+                                        .foregroundColor(.orange)
+                                    ForEach(summary.todos) { todo in
+                                        HStack {
+                                            Text("• \(todo.task)")
+                                            if !todo.owner.isEmpty {
+                                                Text("(\(todo.owner))")
+                                                    .foregroundColor(.secondary)
+                                                    .font(.caption)
+                                            }
                                         }
                                     }
                                 }
                             }
+                            if !summary.nextSteps.isEmpty {
+                                summarySection("后续", summary.nextSteps, color: .purple)
+                            }
                         }
-                        if !summary.nextSteps.isEmpty {
-                            summarySection("后续", summary.nextSteps, color: .purple)
-                        }
+                        .padding()
+                        .background(Color(.systemBackground))
+                        .cornerRadius(10)
                     }
-                    .padding()
-                    .background(Color(.systemBackground))
-                    .cornerRadius(10)
+
+                    // 生成时间
+                    if let generatedAt = visit.summaryGeneratedAt {
+                        Text("生成于 \(formattedDateTime(generatedAt))")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal)
+                    }
                 } else if visit.summaryStatus == .processing {
                     HStack {
                         ProgressView()
@@ -358,6 +379,13 @@ struct DetailView: View {
         return formatter.string(from: date)
     }
 
+    private func formattedDateTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "MM月dd日 HH:mm"
+        return formatter.string(from: date)
+    }
+
     private var transcriptFileName: String {
         if let path = viewModel.visit?.transcriptFilePath, !path.isEmpty {
             return URL(fileURLWithPath: path).lastPathComponent
@@ -371,7 +399,8 @@ struct DetailView: View {
 private struct TranscriptSheetView: View {
     let title: String
     let text: String
-    let onDismiss: () -> Void
+
+    @Environment(\.presentationMode) var presentationMode
 
     var body: some View {
         NavigationView {
@@ -387,7 +416,7 @@ private struct TranscriptSheetView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("关闭", action: onDismiss)
+                        Button("关闭") { presentationMode.wrappedValue.dismiss() }
                     }
                 }
             } else {
@@ -397,7 +426,7 @@ private struct TranscriptSheetView: View {
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .navigationBarTrailing) {
-                            Button("关闭", action: onDismiss)
+                            Button("关闭") { presentationMode.wrappedValue.dismiss() }
                         }
                     }
             }

@@ -89,6 +89,7 @@ final class PersistenceController: ObservableObject {
             makeAttr("summaryStatus", .stringAttributeType, false),
             makeAttr("audioFilePath", .stringAttributeType),
             makeAttr("summaryJSON", .stringAttributeType),
+            dateAttr("summaryGeneratedAt", true),
         ]
 
         model.entities = [recordEntity]
@@ -113,4 +114,5 @@ final class VoiceRecordEntity: NSManagedObject {
     @NSManaged var summaryStatus: String
     @NSManaged var audioFilePath: String?
     @NSManaged var summaryJSON: String?
+    @NSManaged var summaryGeneratedAt: Date?
 }

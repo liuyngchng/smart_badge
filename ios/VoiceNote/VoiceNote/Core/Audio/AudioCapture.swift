@@ -113,3 +113,70 @@ enum AudioCaptureError: LocalizedError {
         }
     }
 }
+
+// MARK: - 导入音频转换器
+
+final class AudioConverter {
+    /// 将各类音频文件转换为 16kHz / 16bit / mono / WAV
+    static func convertToWav(sourceURL: URL) -> URL? {
+        let asset = AVAsset(url: sourceURL)
+        guard let reader = try? AVAssetReader(asset: asset),
+              let audioTrack = asset.tracks(withMediaType: .audio).first
+        else { return nil }
+
+        let outputSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: 16000,
+            AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false,
+        ]
+
+        let readerOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: outputSettings)
+        reader.add(readerOutput)
+        reader.startReading()
+
+        var pcmData = Data()
+        while let sampleBuffer = readerOutput.copyNextSampleBuffer() {
+            guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { continue }
+            var length = 0
+            var dataPointer: UnsafeMutablePointer<Int8>?
+            CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0,
+                                        lengthAtOffsetOut: nil, totalLengthOut: &length,
+                                        dataPointerOut: &dataPointer)
+            if let dataPointer, length > 0 {
+                pcmData.append(UnsafeBufferPointer(start: dataPointer, count: length))
+            }
+        }
+        reader.cancelReading()
+        guard !pcmData.isEmpty else { return nil }
+
+        // 写 WAV
+        let wavURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("import_\(UUID().uuidString).wav")
+        let dataSize = Int32(pcmData.count)
+        let fileSize = dataSize + 36
+        let sampleRate: Int32 = 16000
+        let byteRate: Int32 = sampleRate * 2
+
+        var wav = Data()
+        wav.append("RIFF".data(using: .ascii)!)
+        wav.append(contentsOf: withUnsafeBytes(of: fileSize.littleEndian, Array.init))
+        wav.append("WAVE".data(using: .ascii)!)
+        wav.append("fmt ".data(using: .ascii)!)
+        wav.append(contentsOf: withUnsafeBytes(of: Int32(16).littleEndian, Array.init))
+        wav.append(contentsOf: withUnsafeBytes(of: Int16(1).littleEndian, Array.init))
+        wav.append(contentsOf: withUnsafeBytes(of: Int16(1).littleEndian, Array.init))
+        wav.append(contentsOf: withUnsafeBytes(of: sampleRate.littleEndian, Array.init))
+        wav.append(contentsOf: withUnsafeBytes(of: byteRate.littleEndian, Array.init))
+        wav.append(contentsOf: withUnsafeBytes(of: Int16(2).littleEndian, Array.init))
+        wav.append(contentsOf: withUnsafeBytes(of: Int16(16).littleEndian, Array.init))
+        wav.append("data".data(using: .ascii)!)
+        wav.append(contentsOf: withUnsafeBytes(of: dataSize.littleEndian, Array.init))
+        wav.append(pcmData)
+
+        try? wav.write(to: wavURL)
+        return wavURL
+    }
+}

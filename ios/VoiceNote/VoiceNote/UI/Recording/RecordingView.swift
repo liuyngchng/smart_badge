@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct RecordingView: View {
     @ObservedObject var viewModel: RecordingViewModel
@@ -6,6 +7,7 @@ struct RecordingView: View {
     let onVisitComplete: (UUID) -> Void
 
     @State private var hasNavigated = false
+    @State private var hasImported = false
 
     var body: some View {
         Group {
@@ -34,6 +36,11 @@ struct RecordingView: View {
             if !newValue, !hasNavigated, viewModel.shouldNavigateToDetail, let visitId = viewModel.currentVisitId {
                 hasNavigated = true
                 onVisitComplete(visitId)
+            }
+        }
+        .onChange(of: viewModel.importCompleted) { completed in
+            if completed {
+                onBack()
             }
         }
     }
@@ -175,7 +182,25 @@ struct RecordingView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                 }
-                .disabled(viewModel.isStarting)
+                .disabled(viewModel.isStarting || viewModel.isImporting)
+
+                Button(action: { viewModel.showFilePicker = true }) {
+                    HStack {
+                        if viewModel.isImporting {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "square.and.arrow.down")
+                        }
+                        Text(viewModel.isImporting ? "导入中..." : "导入音频")
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .disabled(viewModel.isStarting || viewModel.isImporting)
+            }
+        }
+        .sheet(isPresented: $viewModel.showFilePicker) {
+            AudioFilePicker { url in
+                viewModel.importAudio(from: url)
             }
         }
     }
@@ -267,6 +292,40 @@ private struct NavigationBarTinter: UIViewControllerRepresentable {
             nc.navigationBar.scrollEdgeAppearance = originalScrollEdgeAppearance
             nc.navigationBar.tintColor = originalTintColor
         }
+    }
+}
+
+// MARK: - 音频文件选择器 (UIDocumentPicker, iOS 14 兼容)
+
+private struct AudioFilePicker: UIViewControllerRepresentable {
+    let onPick: (URL) -> Void
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.audio], asCopy: true)
+        picker.delegate = context.coordinator
+        picker.allowsMultipleSelection = false
+        return picker
+    }
+
+    func updateUIViewController(_ uiView: UIDocumentPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPick: onPick)
+    }
+
+    class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onPick: (URL) -> Void
+        init(onPick: @escaping (URL) -> Void) { self.onPick = onPick }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            guard let url = urls.first else { return }
+            // 获取安全访问权限
+            let secured = url.startAccessingSecurityScopedResource()
+            defer { if secured { url.stopAccessingSecurityScopedResource() } }
+            onPick(url)
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {}
     }
 }
 

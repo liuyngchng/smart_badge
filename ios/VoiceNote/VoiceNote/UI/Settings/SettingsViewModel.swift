@@ -23,14 +23,15 @@ final class SettingsViewModel: ObservableObject {
         var asrURL, llmURL, llmKey, llmModel: String
     }
 
-    /// 构建版本号 — 用 Info.plist 修改时间，每次 build 自动更新
+    /// 版本号 — 用可执行文件的修改时间（即编译时间），格式 20260620.1351
     var appVersion: String {
-        guard let url = Bundle.main.url(forResource: "Info", withExtension: "plist"),
-              let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+        guard let execURL = Bundle.main.executableURL,
+              let attrs = try? FileManager.default.attributesOfItem(atPath: execURL.path),
               let modDate = attrs[.modificationDate] as? Date
         else { return "unknown" }
         let fmt = DateFormatter()
-        fmt.dateFormat = "yyyyMMddHHmmss"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "yyyyMMdd.HHmm"
         return fmt.string(from: modDate)
     }
 

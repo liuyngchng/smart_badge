@@ -80,6 +80,7 @@ final class RecordRepositoryImpl: RecordRepository {
                 guard let entity = try? self.fetchEntity(id: recordId) else { c.resume(); return }
                 entity.summaryJSON = try? self.encoder.encodeString(summary)
                 entity.summaryStatus = ProcessingStatus.completed.rawValue
+                entity.summaryGeneratedAt = Date()
                 try? self.context.save()
                 c.resume()
             }
@@ -190,7 +191,8 @@ final class RecordRepositoryImpl: RecordRepository {
             transcriptStatus: ProcessingStatus(rawValue: e.transcriptStatus) ?? .pending,
             summaryStatus: ProcessingStatus(rawValue: e.summaryStatus) ?? .pending,
             audioFilePath: e.audioFilePath,
-            summary: (try? decoder.decode(RecordSummary.self, from: e.summaryJSON))
+            summary: (try? decoder.decode(RecordSummary.self, from: e.summaryJSON)),
+            summaryGeneratedAt: e.summaryGeneratedAt
         )
     }
 }
