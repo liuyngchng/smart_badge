@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import os
 
 /// 音频采集 — 16kHz / 16bit / PCM / Mono
 /// 对齐 Android: AudioCapture.kt (AudioRecord 16kHz/16bit/PCM)
@@ -93,7 +94,7 @@ final class AudioCapture {
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         } catch {
-            print("[AudioCapture] deactivate session error: \(error)")
+            Logger(subsystem: "com.voicenote", category: "audio").error("[AudioCapture] deactivate session error: \(error.localizedDescription)")
         }
         isRunning = false
     }

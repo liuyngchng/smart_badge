@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// OpenAI 兼容的 LLM 客户端
 /// 对齐 Android: LLMClient.kt
@@ -320,9 +321,8 @@ private extension String {
 // MARK: - 日志
 
 extension Log {
+    private static let logger = Logger(subsystem: "com.voicenote", category: "llm")
     static func llm(_ msg: String) {
-        #if DEBUG
-        print("[LLM] \(msg)")
-        #endif
+        logger.info("\(msg)")
     }
 }

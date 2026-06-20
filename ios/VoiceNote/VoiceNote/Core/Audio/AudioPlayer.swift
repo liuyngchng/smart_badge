@@ -1,6 +1,9 @@
 import AVFoundation
 import Combine
 import Foundation
+import os
+
+private let audioLogger = Logger(subsystem: "com.voicenote", category: "audio")
 
 /// 音频播放器 — 播放已录制的 WAV 文件
 /// 对齐 Android: AudioPlayer.kt (MediaPlayer 封装)
@@ -18,14 +21,15 @@ final class AudioPlayer: ObservableObject {
         stop()
         do {
             let fileSize = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            print("[AudioPlayer] 加载音频: \(url.lastPathComponent) (\(fileSize) bytes)")
+            audioLogger.info("[AudioPlayer] 加载音频: \(url.lastPathComponent) (\(fileSize) bytes)")
             player = try AVAudioPlayer(contentsOf: url)
             player?.prepareToPlay()
             duration = player?.duration ?? 0
             isReady = true
-            print("[AudioPlayer] 加载成功, duration=\(duration)s, channels=\(player?.numberOfChannels ?? 0), sampleRate=\(player?.format.sampleRate ?? 0)")
+            let msg = "[AudioPlayer] 加载成功, duration=\(duration)s, channels=\(player?.numberOfChannels ?? 0), sampleRate=\(player?.format.sampleRate ?? 0)"
+            audioLogger.info("\(msg)")
         } catch {
-            print("[AudioPlayer] 加载失败: \(error.localizedDescription), url=\(url.path)")
+            audioLogger.info("[AudioPlayer] 加载失败: \(error.localizedDescription), url=\(url.path)")
             isReady = false
         }
     }
@@ -34,7 +38,7 @@ final class AudioPlayer: ObservableObject {
     func togglePlayPause() {
         guard let player else { return }
         if player.isPlaying {
-            print("[AudioPlayer] 暂停播放")
+            audioLogger.info("[AudioPlayer] 暂停播放")
             player.pause()
             isPlaying = false
             stopTimer()
@@ -43,14 +47,14 @@ final class AudioPlayer: ObservableObject {
             do {
                 try session.setCategory(.playback, mode: .default)
                 try session.setActive(true)
-                print("[AudioPlayer] AudioSession 已激活(.playback)")
+                audioLogger.info("[AudioPlayer] AudioSession 已激活(.playback)")
             } catch {
-                print("[AudioPlayer] AudioSession 激活失败: \(error)")
+                audioLogger.info("[AudioPlayer] AudioSession 激活失败: \(error)")
             }
             player.play()
             isPlaying = true
             startTimer()
-            print("[AudioPlayer] 开始播放, currentTime=\(player.currentTime)")
+            audioLogger.info("[AudioPlayer] 开始播放, currentTime=\(player.currentTime)")
         }
     }
 

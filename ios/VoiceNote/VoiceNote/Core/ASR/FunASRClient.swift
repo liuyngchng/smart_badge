@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// FunASR WebSocket 客户端
 /// 对齐 Android: FunASRClient.kt
@@ -411,9 +412,8 @@ enum ASRError: LocalizedError {
 // MARK: - 日志
 
 extension Log {
+    private static let logger = Logger(subsystem: "com.voicenote", category: "asr")
     static func asr(_ msg: String) {
-        #if DEBUG
-        print("[FunASR] \(msg)")
-        #endif
+        logger.info("\(msg)")
     }
 }

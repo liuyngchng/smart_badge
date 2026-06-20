@@ -410,11 +410,12 @@ final class RecordingManager: ObservableObject {
 
 // MARK: - 日志
 
+import os
+
 enum Log {
+    private static let logger = Logger(subsystem: "com.voicenote", category: "recording")
     static func recording(_ msg: String) {
-        #if DEBUG
-        print("[RecordingManager] \(msg)")
-        #endif
+        logger.info("\(msg)")
     }
 }
 
