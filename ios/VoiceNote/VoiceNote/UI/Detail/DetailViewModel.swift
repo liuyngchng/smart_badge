@@ -158,10 +158,7 @@ final class DetailViewModel: ObservableObject {
                 return
             }
 
-            // 3. 提交 ASR
-            try? await repository.updateTranscriptStatus(id, status: .processing)
-            refresh()
-
+            // 3. 提交 ASR（不设 .processing 避免 UI 抖动；旧内容保持可见）
             let result = await asrClient.processPCMChunk(
                 pcmData: pcmData, serverUrl: asrURL,
                 wavName: "retry-\(id.uuidString.prefix(8))"
@@ -227,11 +224,8 @@ final class DetailViewModel: ObservableObject {
         isRetryingSummary = true
         summaryError = nil
 
-        // 3. 提交 LLM
+        // 3. 提交 LLM（不设 .processing 避免 UI 抖动；旧内容保持可见）
         Task {
-            try? await repository.updateSummaryStatus(id, status: .processing)
-            refresh()
-
             let summaryResult = await llmClient.generateSummary(
                 transcript: transcript, apiUrl: llmURL, apiKey: llmKey,
                 model: llmModel, customPrompt: nil
