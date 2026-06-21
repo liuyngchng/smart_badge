@@ -69,7 +69,7 @@ final class SettingsViewModel: ObservableObject {
         let mode = ASRMode(rawValue: defaults.string(forKey: "asr_mode") ?? "") ?? .online
         let quality = ModelQuality(rawValue: defaults.string(forKey: "offline_model_quality") ?? "") ?? .int8
         let lMode = LLMMode(rawValue: defaults.string(forKey: "llm_mode") ?? "") ?? .online
-        let lInfo = LLMModelInfo(rawValue: defaults.string(forKey: "llm_model_info") ?? "") ?? .qwen3_0_6b_q4km
+        let lInfo = LLMModelInfo(rawValue: defaults.string(forKey: "llm_model_info") ?? "") ?? .qwen2_5_1_5b_q4km
 
         asrURL = a
         llmURL = b

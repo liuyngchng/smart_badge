@@ -360,7 +360,7 @@ final class RecordingManager: ObservableObject {
                     customPrompt: llmPrompt
                 )
                 if case .success(let summary) = summaryResult {
-                    Log.recording("离线 LLM 总结成功: topics=\(summary.topics.count), todos=\(summary.todos.count)")
+                    Log.recording("离线 LLM 总结成功: \(summary.conclusions.first?.count ?? 0) 字符")
                     try? await repository.updateSummary(recordId, summary: summary)
                 } else {
                     if case .failure(let error) = summaryResult {

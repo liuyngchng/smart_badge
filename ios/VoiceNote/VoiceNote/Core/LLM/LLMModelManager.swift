@@ -62,7 +62,7 @@ final class LLMModelManager: ObservableObject {
 
     static nonisolated func savedModelInfo() -> LLMModelInfo {
         let raw = UserDefaults.standard.string(forKey: "llm_model_info") ?? ""
-        return LLMModelInfo(rawValue: raw) ?? .qwen3_0_6b_q4km
+        return LLMModelInfo(rawValue: raw) ?? .qwen2_5_1_5b_q4km
     }
 
     // MARK: - 磁盘空间检查

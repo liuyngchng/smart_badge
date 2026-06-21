@@ -111,7 +111,7 @@ final class OfflineLLMClient {
         }
 
         let prompt = customPrompt?.isEmpty == false ? customPrompt! : offlineDefaultPrompt
-        let systemPrompt = "你是一个专业的语音笔记助手，负责总结转写文本。请严格从转写文本中提取信息，以 JSON 格式返回。"
+        let systemPrompt = "你是一个语音笔记助手，负责用简洁的文字总结转写文本。"
 
         return await withCheckedContinuation { continuation in
             inferenceQueue.async { [weak self] in
@@ -126,7 +126,7 @@ final class OfflineLLMClient {
                     rawOutput = try self.bridge.generate(
                         withPrompt: transcript,
                         systemPrompt: systemPrompt,
-                        maxTokens: 1024,
+                        maxTokens: 512,
                         temperature: 0.3
                     )
                 } catch {
@@ -146,60 +146,13 @@ final class OfflineLLMClient {
                 Log.llm("[离线] 原始输出:\n\(output)")
                 do {
                     let summary = try self.parseSummary(from: output)
-                    Log.llm("[离线] 解析成功: topics=\(summary.topics.count), conclusions=\(summary.conclusions.count), todos=\(summary.todos.count)")
+                    Log.llm("[离线] 解析完成: \(summary.conclusions.first?.count ?? 0) 字符")
                     continuation.resume(returning: .success(summary))
                 } catch {
                     Log.llm("[离线] 解析失败: \(error.localizedDescription)")
                     continuation.resume(returning: .failure(error))
                 }
             }
-        }
-    }
-
-    // MARK: - JSON 解析（复用 LLMClient 策略）
-
-    /// iOS 14 兼容: 用 NSRegularExpression 提取第一个 JSON 对象
-    private func firstJSONObject(in text: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: "\\{[^}]*\\}") else { return nil }
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = regex.firstMatch(in: text, range: range) else { return nil }
-        return String(text[Range(match.range, in: text)!])
-    }
-
-    private func parseSummary(from text: String) throws -> RecordSummary {
-        let jsonText: String
-        if let jsonMatch = firstJSONObject(in: text) {
-            jsonText = jsonMatch
-        } else if text.contains("{") {
-            jsonText = text
-        } else {
-            return RecordSummary(
-                topics: [],
-                conclusions: [text],
-                todos: [],
-                nextSteps: []
-            )
-        }
-
-        guard let data = jsonText.data(using: .utf8) else {
-            throw LLMError.parseFailed("无法编码响应文本")
-        }
-
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-
-        do {
-            let decoded = try decoder.decode(LLMSummaryResponse.self, from: data)
-            return RecordSummary(
-                topics: decoded.topics ?? [],
-                conclusions: decoded.conclusions ?? [],
-                todos: (decoded.todos ?? []).map {
-                    TodoItem(task: $0.task ?? "", owner: $0.owner ?? "", deadline: $0.deadline ?? "")
-                },
-                nextSteps: decoded.nextSteps ?? []
-            )
-        } catch {
-            throw LLMError.parseFailed(error.localizedDescription)
         }
     }
 
@@ -249,31 +202,32 @@ final class OfflineLLMClient {
     // MARK: - Prompt
 
     private let offlineDefaultPrompt = """
-    你是一个语音笔记整理助手。请从以下转写文本中提取信息，仅输出 JSON：
+    你是一个语音笔记整理助手。请用一段简洁的文字总结以下转写文本，提取关键信息：
 
-    {"topics": ["议题1"], "conclusions": ["结论1"], "todos": [{"task":"事项","owner":"人","deadline":"时间"}], "nextSteps": ["步骤1"]}
+    总结应包含：
+    - 讨论的主要议题
+    - 得出的结论或决定
+    - 待办事项和负责人（如有）
 
-    示例：
-    输入："今天讨论了产品发布计划，决定6月上线。张三负责后端开发，下周五完成。"
-    输出：{"topics":["产品发布计划"],"conclusions":["6月上线"],"todos":[{"task":"后端开发","owner":"张三","deadline":"下周五"}],"nextSteps":["推进开发进度"]}
+    直接输出总结文本，不要输出 JSON。
 
-    现在处理以下文本，只输出 JSON：
+    转写文本：
     """
-}
 
-// MARK: - 解析辅助类型 (与 LLMClient 中的 LLMSummaryResponse 一致)
+    // MARK: - 解析（离线模式：纯文本 → 作为结论）
 
-private struct LLMSummaryResponse: Codable {
-    let topics: [String]?
-    let conclusions: [String]?
-    let todos: [LLMTodoItem]?
-    let nextSteps: [String]?
-}
-
-private struct LLMTodoItem: Codable {
-    let task: String?
-    let owner: String?
-    let deadline: String?
+    private func parseSummary(from text: String) throws -> RecordSummary {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw OfflineLLMError.emptyResponse
+        }
+        return RecordSummary(
+            topics: [],
+            conclusions: [trimmed],
+            todos: [],
+            nextSteps: []
+        )
+    }
 }
 
 // MARK: - 错误
