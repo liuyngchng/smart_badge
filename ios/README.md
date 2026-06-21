@@ -27,7 +27,7 @@
 - [x] 实时语音转写（WebSocket 流式 FunASR — **在线模式**）
 - [x] **离线语音转写（Sherpa-ONNX + SenseVoice 模型 — iOS 15.1+）**
 - [x] ASR 模式切换（在线/离线），设置页 Toggle 开关
-- [x] 离线模型下载（INT8 ~229MB / FP32 ~895MB），从 ModelScope 下载
+- [x] 离线模型下载（INT8 ~158MB 压缩包 / FP32 ~845MB 压缩包），从 GitHub Releases 下载
 - [x] 拜访结束后 LLM 自动生成结构化总结
 - [x] 拜访详情（完整转写文本 + AI 总结 + 音频回放）
 - [x] 音频/转写文件导出
@@ -55,7 +55,7 @@ ios/
         │   │   ├── ASRTypes.swift              # ASRMode / ModelQuality 枚举
         │   │   ├── FunASRClient.swift          # FunASR WebSocket 客户端（在线）
         │   │   ├── OfflineASRClient.swift      # Sherpa-ONNX 离线客户端（iOS 15.1+）
-        │   │   └── ModelDownloadManager.swift  # 模型下载管理器（ModelScope）
+        │   │   └── ModelDownloadManager.swift  # 模型下载管理器（GitHub Releases）
         │   ├── Audio/AudioCapture.swift        # AVAudioEngine PCM 采集
         │   ├── LLM/LLMClient.swift             # OpenAI 兼容 LLM 客户端
         │   ├── Location/LocationTracker.swift  # GPS 位置追踪
@@ -106,11 +106,65 @@ bash ../scripts/download_ios_frameworks.sh
 
 1. 打开 App → 设置
 2. 打开「离线识别」开关
-3. 选择模型质量：INT8（~229MB，推荐）/ FP32（~895MB）
-4. 点击「下载模型」，从 ModelScope 拉取
+3. 选择模型质量：INT8（~158MB 压缩包，推荐）/ FP32（~845MB 压缩包）
+4. 点击「下载模型」，从 GitHub Releases 拉取 tar.bz2 归档并自动解压
 5. 下载完成后，新建拜访开始录音 → 语音识别在本地完成
 
 模型文件存储在设备沙盒 `Documents/models/sherpa-onnx-sense-voice/`，不打包进 App。
+
+## 离线模型下载源
+
+模型从 **GitHub Releases** 下载（`k2-fsa/sherpa-onnx` 仓库的 `asr-models` tag）。
+
+> ⚠️ **注意**：不使用 HuggingFace（中国区无法访问），也不使用 ModelScope（原仓库已失效）。
+> 如果 GitHub 链接失效，可去 [k2-fsa/sherpa-onnx Releases](https://github.com/k2-fsa/sherpa-onnx/releases) 搜索最新模型。
+
+### 当前使用的模型（2025-09-09 版）
+
+| 精度 | 归档文件名 | 压缩包大小 | 解压后模型大小 |
+|------|-----------|-----------|---------------|
+| INT8 | `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09.tar.bz2` | ~158 MB | ~229 MB |
+| FP32 | `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2025-09-09.tar.bz2` | ~845 MB | ~895 MB |
+
+### 下载 URL
+
+```
+https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/{archiveFilename}
+```
+
+即：
+
+| 精度 | 完整 URL |
+|------|----------|
+| INT8 | `https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09.tar.bz2` |
+| FP32 | `https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2025-09-09.tar.bz2` |
+
+### 归档内容
+
+每个 tar.bz2 压缩包内包含：
+
+```
+sherpa-onnx-sense-voice-zh-en-ja-ko-yue-{int8-}2025-09-09/
+├── model.int8.onnx   # 或 model.onnx（FP32 版）
+├── tokens.txt         # 分词器，两个精度共用
+├── README.md
+└── test_wavs/         # 测试音频，App 不提取
+```
+
+App 下载后自动解压并提取 `model.int8.onnx`（或 `model.onnx`）和 `tokens.txt` 到沙盒目录。
+
+### 如何寻找新模型
+
+如果当前链接失效，按以下步骤找替换：
+
+1. 访问 [sherpa-onnx Releases](https://github.com/k2-fsa/sherpa-onnx/releases)
+2. 找到 `asr-models` tag（或最新 asr-models 发布）
+3. 搜索 `sense-voice` 相关的 `.tar.bz2` 文件
+4. 选择不带芯片前缀的通用版本（不要 `rk3562/rk3588/ascend/qnn` 等前缀）
+   - 正确：`sherpa-onnx-sense-voice-zh-en-ja-ko-yue-{date}.tar.bz2`
+   - 错误：`sherpa-onnx-rk3588-...-sense-voice-...tar.bz2`（特定芯片优化版）
+5. INT8 版本文件名包含 `int8`，FP32 不包含
+6. 更新 `ASRTypes.swift` 中的 `archiveFilename` 和 `estimatedSizeMB`
 
 ## 权限
 
