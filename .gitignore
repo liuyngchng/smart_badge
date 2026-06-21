@@ -59,3 +59,7 @@ ios/VoiceNote/Libraries/
 
 # 离线 ASR 模型文件（体积大，不提交 git）
 models/
+
+# ===== Claude Code =====
+.claude/settings.local.json
+.claude/plans/
