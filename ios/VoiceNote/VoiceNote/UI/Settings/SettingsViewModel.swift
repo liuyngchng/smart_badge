@@ -8,6 +8,8 @@ final class SettingsViewModel: ObservableObject {
     @Published var llmURL: String
     @Published var llmKey: String
     @Published var llmModel: String
+    @Published var asrMode: ASRMode
+    @Published var offlineModelQuality: ModelQuality
 
     @Published var saveConfirmed = false
     @Published var validationError: String?
@@ -21,6 +23,8 @@ final class SettingsViewModel: ObservableObject {
 
     private struct Snapshot: Equatable {
         var asrURL, llmURL, llmKey, llmModel: String
+        var asrMode: ASRMode
+        var offlineModelQuality: ModelQuality
     }
 
     /// 版本号 — 用可执行文件的修改时间（即编译时间），格式 20260620.1351
@@ -38,7 +42,8 @@ final class SettingsViewModel: ObservableObject {
     /// 是否有未保存的修改
     var hasChanges: Bool {
         Snapshot(asrURL: asrURL, llmURL: llmURL, llmKey: llmKey,
-                 llmModel: llmModel) != saved
+                 llmModel: llmModel,
+                 asrMode: asrMode, offlineModelQuality: offlineModelQuality) != saved
     }
 
     init() {
@@ -47,12 +52,17 @@ final class SettingsViewModel: ObservableObject {
         let b = defaults.string(forKey: "llm_url")    ?? "https://api.deepseek.com"
         let c = defaults.string(forKey: "llm_key")    ?? ""
         let d = defaults.string(forKey: "llm_model")  ?? "deepseek-v4-pro"
+        let mode = ASRMode(rawValue: defaults.string(forKey: "asr_mode") ?? "") ?? .online
+        let quality = ModelQuality(rawValue: defaults.string(forKey: "offline_model_quality") ?? "") ?? .int8
 
         asrURL = a
         llmURL = b
         llmKey = c
         llmModel = d
-        saved = Snapshot(asrURL: a, llmURL: b, llmKey: c, llmModel: d)
+        asrMode = mode
+        offlineModelQuality = quality
+        saved = Snapshot(asrURL: a, llmURL: b, llmKey: c, llmModel: d,
+                         asrMode: mode, offlineModelQuality: quality)
     }
 
     private var saveGeneration = 0
@@ -72,9 +82,12 @@ final class SettingsViewModel: ObservableObject {
         defaults.set(llmURL,   forKey: "llm_url")
         defaults.set(llmKey,   forKey: "llm_key")
         defaults.set(llmModel, forKey: "llm_model")
+        defaults.set(asrMode.rawValue, forKey: "asr_mode")
+        defaults.set(offlineModelQuality.rawValue, forKey: "offline_model_quality")
 
         saved = Snapshot(asrURL: asrURL, llmURL: llmURL, llmKey: llmKey,
-                         llmModel: llmModel)
+                         llmModel: llmModel,
+                         asrMode: asrMode, offlineModelQuality: offlineModelQuality)
 
         // 短暂显示"已保存"，使用代数防止快速多次保存时的闪烁
         let generation = saveGeneration + 1
@@ -93,19 +106,26 @@ final class SettingsViewModel: ObservableObject {
 
     /// 校验所有必填字段；返回 nil 表示通过，否则返回错误信息
     func validate() -> String? {
-        let trimmed = [
-            ("FunASR 地址", asrURL),
+        // 必填字段：LLM 始终必填，FunASR 仅在在线模式下必填
+        var requiredFields: [(String, String)] = [
             ("LLM API 地址", llmURL),
             ("API Key", llmKey),
             ("模型名称", llmModel),
         ]
-        for (name, value) in trimmed {
+        if asrMode == .online {
+            requiredFields.insert(("FunASR 地址", asrURL), at: 0)
+        }
+        for (name, value) in requiredFields {
             if value.trimmingCharacters(in: .whitespaces).isEmpty {
                 return "\(name) 不能为空"
             }
         }
-        // URL 格式校验
-        for (name, value) in [("FunASR 地址", asrURL), ("LLM API 地址", llmURL)] {
+        // URL 格式校验：LLM 始终校验，FunASR 仅在线模式校验
+        var urlFields: [(String, String)] = [("LLM API 地址", llmURL)]
+        if asrMode == .online {
+            urlFields.append(("FunASR 地址", asrURL))
+        }
+        for (name, value) in urlFields {
             guard let url = URL(string: value.trimmingCharacters(in: .whitespaces)),
                   let scheme = url.scheme,
                   !scheme.isEmpty,
@@ -148,5 +168,42 @@ final class SettingsViewModel: ObservableObject {
     func test() {
         testWebSocket()
         testLLM()
+    }
+
+    // MARK: - 模型下载（委托给 ModelDownloadManager）
+
+    /// 模型下载管理器（由 View 层注入）
+    var modelDownloadManager: ModelDownloadManager?
+
+    /// 当前下载状态，由 ModelDownloadManager 同步
+    var modelDownloadState: ModelDownloadManager.DownloadState {
+        modelDownloadManager?.downloadState ?? .idle
+    }
+
+    /// 当前下载进度 0...1
+    var modelDownloadProgress: Double {
+        modelDownloadManager?.downloadProgress ?? 0
+    }
+
+    /// 当前选定质量的模型是否已下载
+    var isModelDownloaded: Bool {
+        ModelDownloadManager.isModelDownloaded(offlineModelQuality)
+    }
+
+    func startDownload() async {
+        guard let manager = modelDownloadManager else { return }
+        do {
+            try await manager.downloadModel(quality: offlineModelQuality)
+        } catch {
+            // 错误状态已由 ModelDownloadManager 设置
+        }
+    }
+
+    func cancelDownload() {
+        modelDownloadManager?.cancelDownload()
+    }
+
+    func deleteModel() async {
+        modelDownloadManager?.deleteModel(quality: offlineModelQuality)
     }
 }

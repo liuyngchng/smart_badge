@@ -6,13 +6,51 @@ struct SettingsView: View {
 
     @State private var showBackAlert = false
     @State private var showValidationAlert = false
+    @StateObject private var modelDownloadManager = ModelDownloadManager()
+
+    /// iOS 15.1 以上才支持离线识别（onnxruntime 要求）
+    private var supportsOffline: Bool {
+        if #available(iOS 15.1, *) { return true }
+        return false
+    }
 
     var body: some View {
         Form {
-            Section(header: Text("FunASR 语音识别")) {
-                TextField("WebSocket 地址", text: $viewModel.asrURL)
-                    .keyboardType(.URL)
-                    .autocapitalization(.none)
+            // MARK: - ASR 模式选择
+            if supportsOffline {
+                Section(header: Text("语音识别")) {
+                    Toggle(isOn: Binding(
+                        get: { viewModel.asrMode == .offline },
+                        set: { viewModel.asrMode = $0 ? .offline : .online }
+                    )) {
+                        Text("离线识别")
+                    }
+
+                    if viewModel.asrMode == .online {
+                        TextField("WebSocket 地址", text: $viewModel.asrURL)
+                            .keyboardType(.URL)
+                            .autocapitalization(.none)
+                    }
+                }
+            } else {
+                Section(header: Text("语音识别")) {
+                    TextField("WebSocket 地址", text: $viewModel.asrURL)
+                        .keyboardType(.URL)
+                        .autocapitalization(.none)
+
+                    HStack {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(.secondary)
+                        Text("离线识别需要 iOS 15.1 或更高版本")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+
+            // MARK: - 离线模型设置
+            if supportsOffline, viewModel.asrMode == .offline {
+                OfflineASRSettingsView(viewModel: viewModel)
             }
 
             Section(header: Text("LLM API(OpenAI)")) {
@@ -28,15 +66,17 @@ struct SettingsView: View {
 
             // MARK: - 连接测试
             Section(header: Text("连接测试")) {
-                HStack {
-                    Text("FunASR WebSocket")
-                        .font(.subheadline)
-                    Spacer()
-                    Text(viewModel.wsTestResult.message)
-                        .font(.caption)
-                        .foregroundColor(testResultColor(viewModel.wsTestResult))
-                    Image(systemName: testResultIcon(viewModel.wsTestResult))
-                        .foregroundColor(testResultColor(viewModel.wsTestResult))
+                if viewModel.asrMode == .online {
+                    HStack {
+                        Text("FunASR WebSocket")
+                            .font(.subheadline)
+                        Spacer()
+                        Text(viewModel.wsTestResult.message)
+                            .font(.caption)
+                            .foregroundColor(testResultColor(viewModel.wsTestResult))
+                        Image(systemName: testResultIcon(viewModel.wsTestResult))
+                            .foregroundColor(testResultColor(viewModel.wsTestResult))
+                    }
                 }
 
                 HStack {
@@ -88,6 +128,9 @@ struct SettingsView: View {
         }
         .navigationTitle("设置")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            viewModel.modelDownloadManager = modelDownloadManager
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button("返回") {

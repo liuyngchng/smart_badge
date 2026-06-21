@@ -8,6 +8,8 @@ final class AppContainer: ObservableObject {
     let asrClient = FunASRClient()
     let llmClient = LLMClient()
     let persistence = PersistenceController.shared
+    let modelDownloadManager = ModelDownloadManager()
+    let offlineASRClient = OfflineASRClient()
 
     lazy var recordRepository: RecordRepository = RecordRepositoryImpl(container: self)
     lazy var recordingManager = RecordingManager(container: self)

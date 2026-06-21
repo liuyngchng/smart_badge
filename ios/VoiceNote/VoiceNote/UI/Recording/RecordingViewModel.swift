@@ -70,6 +70,7 @@ final class RecordingViewModel: ObservableObject {
             let llmKey = UserDefaults.standard.string(forKey: "llm_key") ?? ""
             let llmModel = UserDefaults.standard.string(forKey: "llm_model") ?? "deepseek-v4-pro"
             let asrURL = UserDefaults.standard.string(forKey: "asr_url") ?? "ws://192.168.1.110:10095"
+            let asrMode = ASRMode(rawValue: UserDefaults.standard.string(forKey: "asr_mode") ?? "") ?? .online
 
             let record = VoiceRecord(
                 title: finalTitle,
@@ -98,7 +99,8 @@ final class RecordingViewModel: ObservableObject {
                     asrURL: asrURL,
                     llmURL: llmURL,
                     llmKey: llmKey,
-                    llmModel: llmModel
+                    llmModel: llmModel,
+                    asrMode: asrMode
                 )
 
                 // 绑定状态轮询
@@ -197,6 +199,7 @@ final class RecordingViewModel: ObservableObject {
 
                 // 5. 启动 ASR 处理
                 let asrURL = UserDefaults.standard.string(forKey: "asr_url") ?? "ws://192.168.1.110:10095"
+                let asrMode = ASRMode(rawValue: UserDefaults.standard.string(forKey: "asr_mode") ?? "") ?? .online
                 let llmURL = UserDefaults.standard.string(forKey: "llm_url") ?? "https://api.deepseek.com"
                 let llmKey = UserDefaults.standard.string(forKey: "llm_key") ?? ""
                 let llmModel = UserDefaults.standard.string(forKey: "llm_model") ?? "deepseek-v4-pro"
@@ -210,13 +213,29 @@ final class RecordingViewModel: ObservableObject {
                         pcmData.append(chunk)
                     }
                     if !pcmData.isEmpty {
-                        let asrClient = container.asrClient
                         let repository = container.recordRepository
                         try? await repository.updateTranscriptStatus(recordId, status: .processing)
-                        let result = await asrClient.processPCMChunk(
-                            pcmData: pcmData, serverUrl: asrURL,
-                            wavName: "import-\(recordId.uuidString.prefix(8))"
-                        )
+
+                        let result: Result<String, Error>
+                        switch asrMode {
+                        case .online:
+                            result = await container.asrClient.processPCMChunk(
+                                pcmData: pcmData, serverUrl: asrURL,
+                                wavName: "import-\(recordId.uuidString.prefix(8))"
+                            )
+                        case .offline:
+                            let quality = ModelDownloadManager.savedQuality()
+                            if ModelDownloadManager.isModelDownloaded(quality) {
+                                do {
+                                    try container.offlineASRClient.ensureRecognizer(quality: quality)
+                                    result = await container.offlineASRClient.processPCMChunk(pcmData: pcmData)
+                                } catch {
+                                    result = .failure(error)
+                                }
+                            } else {
+                                result = .failure(OfflineASRError.modelNotDownloaded(quality))
+                            }
+                        }
                         if case .success(let text) = result, !text.isEmpty {
                             let txtURL = audioDir.appendingPathComponent("\(dateStr).txt")
                             try? text.write(to: txtURL, atomically: true, encoding: .utf8)

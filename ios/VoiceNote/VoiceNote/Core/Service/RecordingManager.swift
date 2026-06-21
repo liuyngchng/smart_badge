@@ -30,6 +30,7 @@ final class RecordingManager: ObservableObject {
     private var currentLlmKey: String = ""
     private var currentLlmModel: String = "deepseek-v4-pro"
     private var currentLlmPrompt: String?
+    private var currentAsrMode: ASRMode = .online
 
     /// 分段 ASR：累积 PCM 数据（不包含 WAV 头）
     private var pcmBuffer = Data()
@@ -62,7 +63,8 @@ final class RecordingManager: ObservableObject {
         llmURL: String,
         llmKey: String,
         llmModel: String = "deepseek-v4-pro",
-        llmPrompt: String? = nil
+        llmPrompt: String? = nil,
+        asrMode: ASRMode = .online
     ) {
         currentRecordId = recordId
         currentAsrURL = asrURL
@@ -70,6 +72,7 @@ final class RecordingManager: ObservableObject {
         currentLlmKey = llmKey
         currentLlmModel = llmModel
         currentLlmPrompt = llmPrompt
+        currentAsrMode = asrMode
 
         pcmBuffer = Data()
         transcriptChunks = [:]
@@ -102,15 +105,37 @@ final class RecordingManager: ObservableObject {
         let asrURL = currentAsrURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let audioCapture = container.audioCapture
 
-        guard !asrURL.isEmpty else {
-            Log.recording("ASR URL 为空，跳过连接")
-            transcript = "请先在设置中配置 FunASR 服务地址"
-            isRecording = false
-            phase = .idle
-            return
+        // 离线模式：检查模型是否已下载
+        if currentAsrMode == .offline {
+            let quality = ModelDownloadManager.savedQuality()
+            guard ModelDownloadManager.isModelDownloaded(quality) else {
+                Log.recording("离线模型未下载 (\(quality.rawValue))，中止录音")
+                transcript = "离线模型未下载，请先在设置中下载 SenseVoice 模型"
+                isRecording = false
+                phase = .idle
+                return
+            }
+            // 确保离线识别器已初始化
+            do {
+                try container.offlineASRClient.ensureRecognizer(quality: quality)
+            } catch {
+                Log.recording("离线识别器初始化失败: \(error.localizedDescription)")
+                transcript = "离线识别器初始化失败: \(error.localizedDescription)"
+                isRecording = false
+                phase = .idle
+                return
+            }
+        } else {
+            guard !asrURL.isEmpty else {
+                Log.recording("ASR URL 为空，跳过连接")
+                transcript = "请先在设置中配置 FunASR 服务地址"
+                isRecording = false
+                phase = .idle
+                return
+            }
         }
 
-        Log.recording("启动分段 ASR 录音 (chunk=\(Int(chunkDurationSeconds))s)")
+        Log.recording("启动分段 ASR 录音 (chunk=\(Int(chunkDurationSeconds))s, mode=\(currentAsrMode.rawValue))")
 
         audioStreamTask = Task {
             do {
@@ -142,7 +167,7 @@ final class RecordingManager: ObservableObject {
         }
     }
 
-    /// 将当前 buffer 作为一个片段发给 FunASR，异步处理不阻塞录音
+    /// 将当前 buffer 作为一个片段发给 ASR，异步处理不阻塞录音
     private func processCurrentChunk() {
         guard !pcmBuffer.isEmpty else { return }
         let chunk = pcmBuffer
@@ -151,16 +176,24 @@ final class RecordingManager: ObservableObject {
         chunkIndex += 1
         pendingChunkCount += 1
         let asrURL = currentAsrURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let asrMode = currentAsrMode
         let asrClient = container.asrClient
+        let offlineClient = container.offlineASRClient
         let repository = container.recordRepository
         let recordId = currentRecordId
 
-        Log.recording("发送片段 #\(index) (PCM \(chunk.count / 1000)KB)")
+        Log.recording("发送片段 #\(index) (PCM \(chunk.count / 1000)KB) mode=\(asrMode.rawValue)")
 
         Task.detached(priority: .utility) {
-            let result = await asrClient.processPCMChunk(
-                pcmData: chunk, serverUrl: asrURL, wavName: "chunk-\(index)"
-            )
+            let result: Result<String, Error>
+            switch asrMode {
+            case .online:
+                result = await asrClient.processPCMChunk(
+                    pcmData: chunk, serverUrl: asrURL, wavName: "chunk-\(index)"
+                )
+            case .offline:
+                result = await offlineClient.processPCMChunk(pcmData: chunk)
+            }
             // 切回主线程更新状态
             await MainActor.run {
                 self.pendingChunkCount -= 1

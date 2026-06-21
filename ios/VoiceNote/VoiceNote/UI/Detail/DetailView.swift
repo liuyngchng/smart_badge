@@ -115,7 +115,8 @@ struct DetailView: View {
                 if let transcript = visit.transcriptText, !transcript.isEmpty {
                     GroupBox(label: Text("完整转写")) {
                         Button {
-                            activeSheet = .transcript
+                            activeSheet = nil
+                            DispatchQueue.main.async { activeSheet = .transcript }
                         } label: {
                             HStack {
                                 Image(systemName: "doc.text")
@@ -178,7 +179,9 @@ struct DetailView: View {
                         if let path = visit.transcriptFilePath, !path.isEmpty,
                            FileManager.default.fileExists(atPath: path) {
                             Button {
-                                activeSheet = .share(URL(fileURLWithPath: path))
+                                let url = URL(fileURLWithPath: path)
+                                activeSheet = nil
+                                DispatchQueue.main.async { activeSheet = .share(url) }
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "square.and.arrow.up")
@@ -364,7 +367,9 @@ struct DetailView: View {
             if let path = viewModel.visit?.audioFilePath, FileManager.default.fileExists(atPath: path) {
                 Divider()
                 Button {
-                    activeSheet = .share(URL(fileURLWithPath: path))
+                    let url = URL(fileURLWithPath: path)
+                    activeSheet = nil
+                    DispatchQueue.main.async { activeSheet = .share(url) }
                 } label: {
                     Label("导出", systemImage: "square.and.arrow.up")
                         .font(.subheadline)
