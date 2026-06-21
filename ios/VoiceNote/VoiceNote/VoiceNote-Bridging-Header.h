@@ -6,3 +6,4 @@
 //
 
 #import <sherpa-onnx/c-api/c-api.h>
+#import "Core/ASR/Bzip2Helper.h"

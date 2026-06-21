@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		45885A708F3B42E39893B984 /* onnxruntime.xcframework in CopyFiles */ = {isa = PBXBuildFile; fileRef = C722FA2A71904AA69777663D /* onnxruntime.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		4EA7D42C1B8D4C3C99D83E6C /* OfflineASRClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22B6898F5C744A3942E396B /* OfflineASRClient.swift */; };
 		6F3545960D434E4AA85D52D5 /* ModelDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B22EA984B8E94E578EA8F067 /* ModelDownloadManager.swift */; };
 		7524A6CCFA8240DDB03D928A /* ASRTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16C5B0D7A37408A98E8B747 /* ASRTypes.swift */; };
@@ -37,10 +36,9 @@
 		793370C82FE40E9000752EE2 /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370D02FE40E9000752EE2 /* AudioPlayer.swift */; };
 		793370C92FE40E9000752EE3 /* ConnectionTester.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793370D12FE40E9000752EE3 /* ConnectionTester.swift */; };
 		79815C502FE4BD21005AFCD5 /* VoiceNote.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79815C4F2FE4BD21005AFCD5 /* VoiceNote.swift */; };
+		79888F1E2FE7B6DE00B2EF86 /* onnxruntime.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = C722FA2A71904AA69777663D /* onnxruntime.xcframework */; };
 		9730040B87D9451D99A16193 /* sherpa-onnx.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CF97AAB0F9B846ACB94816D0 /* sherpa-onnx.xcframework */; };
-		A48D61241C91400BA52FE47E /* sherpa-onnx.xcframework in CopyFiles */ = {isa = PBXBuildFile; fileRef = CF97AAB0F9B846ACB94816D0 /* sherpa-onnx.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B5E424D055E94E13AFC98508 /* OfflineASRSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A03F620ADC04CAAB3BDB1C0 /* OfflineASRSettingsView.swift */; };
-		BE3AFAC765DF4FAF9B0160BC /* onnxruntime.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = C722FA2A71904AA69777663D /* onnxruntime.xcframework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,20 +57,6 @@
 			remoteInfo = VoiceNote;
 		};
 /* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		BF15A1ECA5424358A3B5DCDD /* CopyFiles */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (
-				A48D61241C91400BA52FE47E /* sherpa-onnx.xcframework in CopyFiles */,
-				45885A708F3B42E39893B984 /* onnxruntime.xcframework in CopyFiles */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		1A03F620ADC04CAAB3BDB1C0 /* OfflineASRSettingsView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = OfflineASRSettingsView.swift; sourceTree = "<group>"; };
@@ -119,7 +103,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9730040B87D9451D99A16193 /* sherpa-onnx.xcframework in Frameworks */,
-				BE3AFAC765DF4FAF9B0160BC /* onnxruntime.xcframework in Frameworks */,
+				79888F1E2FE7B6DE00B2EF86 /* onnxruntime.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -376,7 +360,6 @@
 				79336FC72FE40A2000752EE2 /* Sources */,
 				79336FC82FE40A2000752EE2 /* Frameworks */,
 				79336FC92FE40A2000752EE2 /* Resources */,
-				BF15A1ECA5424358A3B5DCDD /* CopyFiles */,
 			);
 			buildRules = (
 			);
@@ -705,6 +688,7 @@
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-lc++",
+					"-lbz2",
 					"-weak_framework",
 					CoreML,
 					"-Wl,-U,_OBJC_CLASS_$_MLComputePlan",
@@ -718,7 +702,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "VoiceNote/VoiceNote-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -757,6 +741,7 @@
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-lc++",
+					"-lbz2",
 					"-weak_framework",
 					CoreML,
 					"-Wl,-U,_OBJC_CLASS_$_MLComputePlan",
@@ -770,7 +755,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "VoiceNote/VoiceNote-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};

@@ -33,6 +33,9 @@ struct OfflineASRSettingsView: View {
         case .downloading(let progress):
             downloadingRow(progress)
 
+        case .extracting(let progress):
+            extractingRow(progress)
+
         case .completed:
             modelReadyRow
             // 如果切换了质量，显示下载按钮
@@ -88,6 +91,23 @@ struct OfflineASRSettingsView: View {
                 Text("取消下载").foregroundColor(.red)
             }
             .font(.caption)
+        }
+    }
+
+    private func extractingRow(_ progress: Double) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                ProgressView()
+                Text("解压提取中...")
+                Spacer()
+                Text("\(Int(progress * 100))%")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+            ProgressView(value: progress)
+            Text("正在解压并提取模型文件")
+                .font(.caption2)
+                .foregroundColor(.secondary)
         }
     }
 

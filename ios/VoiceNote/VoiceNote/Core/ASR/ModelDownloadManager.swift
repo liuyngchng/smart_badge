@@ -2,7 +2,7 @@ import Foundation
 import os
 
 /// 离线模型下载管理器
-/// 从 ModelScope（国内可访问）下载 SenseVoice ONNX 模型（INT8 / FP32）
+/// 从 GitHub Releases 下载 SenseVoice ONNX 模型（tar.bz2 归档），解压提取所需文件
 @MainActor
 final class ModelDownloadManager: ObservableObject {
     @Published var downloadProgress: Double = 0
@@ -11,6 +11,7 @@ final class ModelDownloadManager: ObservableObject {
     enum DownloadState: Equatable {
         case idle
         case downloading(progress: Double)
+        case extracting(progress: Double)
         case completed(Date)
         case failed(String)
     }
@@ -18,8 +19,8 @@ final class ModelDownloadManager: ObservableObject {
     // MARK: - 下载任务持有
 
     private var currentTask: URLSessionDownloadTask?
-    private var currentResumeData: Data?
     private var downloadSession: URLSession?
+    private var isDownloading = false  // 防重复点击
 
     deinit {
         downloadSession?.invalidateAndCancel()
@@ -27,9 +28,8 @@ final class ModelDownloadManager: ObservableObject {
 
     // MARK: - 路径
 
-    /// ModelScope 仓库（国内可访问）
-    private static let modelScopeRepo = "pengzhendong/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"
-    private static let baseURL = "https://www.modelscope.cn/models/\(modelScopeRepo)/resolve/master"
+    /// GitHub Releases 地址（asr-models tag）
+    private static let baseURL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
 
     /// 模型本地存储根目录
     nonisolated static var modelsDirectory: URL {
@@ -58,7 +58,6 @@ final class ModelDownloadManager: ObservableObject {
 
     /// 获取当前已下载的最高质量模型（用于 RecordingManager fallback）
     nonisolated static func bestDownloadedQuality() -> ModelQuality? {
-        // 优先 FP32，其次 INT8
         if isModelDownloaded(.fp32) { return .fp32 }
         if isModelDownloaded(.int8) { return .int8 }
         return nil
@@ -81,92 +80,140 @@ final class ModelDownloadManager: ObservableObject {
 
     // MARK: - 磁盘空间检查
 
-    /// 检查是否有足够磁盘空间（模型 + 10% 余量）
+    /// 检查是否有足够磁盘空间（模型压缩包 + 解压后 + 10% 余量）
     nonisolated static func hasSufficientDiskSpace(for quality: ModelQuality) -> Bool {
-        let required = Int64(quality.estimatedSizeMB) * 1024 * 1024
-        let margin = Int64(Double(required) * 0.1)
-        let totalRequired = required + margin
+        let estimated = Int64(quality.estimatedSizeMB) * 1024 * 1024
+        let margin = Int64(Double(estimated) * 0.1)
+        let totalRequired = estimated + margin
 
         do {
             let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             let values = try documentsURL.resourceValues(forKeys: [.volumeAvailableCapacityKey])
             guard let available = values.volumeAvailableCapacity, available > 0 else {
-                // 无法读取容量时，乐观放行
                 return true
             }
             return Int64(available) > totalRequired
         } catch {
-            return true // 无法读取时放行
+            return true
         }
     }
 
-    // MARK: - 下载
+    // MARK: - 下载（下载 tar.bz2 → 解压 → 提取文件）
 
-    /// 下载模型（模型文件 + tokens.txt），支持断点续传
+    /// 下载模型（tar.bz2 归档），解压并提取模型文件和 tokens.txt
     func downloadModel(quality: ModelQuality) async throws {
+        // 防重复点击
+        guard !isDownloading else {
+            Log.asr("下载已在進行中，忽略重复请求")
+            return
+        }
+        isDownloading = true
+
         // 检查磁盘空间
         guard Self.hasSufficientDiskSpace(for: quality) else {
-            downloadState = .failed("磁盘空间不足，需要至少 \(quality.estimatedSizeMB) MB")
+            let msg = "磁盘空间不足，需要至少 \(quality.estimatedSizeMB) MB"
+            Log.asr("下载失败: \(msg)")
+            downloadState = .failed(msg)
+            isDownloading = false
             throw DownloadError.insufficientDiskSpace
         }
+        Log.asr("磁盘空间检查通过，需要 ~\(quality.estimatedSizeMB)MB")
 
         // 确保目录存在
-        try? FileManager.default.createDirectory(at: Self.modelsDirectory,
-                                                  withIntermediateDirectories: true)
+        let fm = FileManager.default
+        try? fm.createDirectory(at: Self.modelsDirectory,
+                                withIntermediateDirectories: true)
 
-        // 先下载 tokens.txt（如果已存在则跳过）
-        if !FileManager.default.fileExists(atPath: Self.tokensFilePath().path) {
-            downloadState = .downloading(progress: 0)
-            do {
-                try await downloadFile(filename: "tokens.txt", to: Self.tokensFilePath())
-            } catch {
-                downloadState = .failed("下载 tokens.txt 失败: \(error.localizedDescription)")
-                throw error
-            }
+        let archiveFilename = quality.archiveFilename
+        let tempDir = fm.temporaryDirectory.appendingPathComponent("model-download")
+        try? fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let archiveURL = tempDir.appendingPathComponent(archiveFilename)
+        let tarURL = tempDir.appendingPathComponent("archive.tar")
+
+        defer {
+            // 清理临时文件
+            try? fm.removeItem(at: archiveURL)
+            try? fm.removeItem(at: tarURL)
+            try? fm.removeItem(at: tempDir)
+            Log.asrDebug("临时文件已清理")
         }
 
-        // 下载模型文件
-        let targetURL = Self.modelFilePath(quality)
-        let modelFilename = quality.modelFilename
-
+        // 阶段1: 下载 tar.bz2
+        Log.asr("开始下载模型: \(quality.rawValue) 来自 \(Self.baseURL)/\(archiveFilename)")
         downloadState = .downloading(progress: 0)
         do {
-            try await downloadModelFile(filename: modelFilename, to: targetURL, quality: quality)
-            downloadState = .completed(Date())
-            Log.asr("模型下载完成: \(quality.rawValue) (\(Self.downloadedModelSize(quality) / 1_048_576)MB)")
+            try await downloadArchive(filename: archiveFilename, to: archiveURL, quality: quality)
         } catch {
+            isDownloading = false
             if error is CancellationError {
+                Log.asr("下载已取消")
                 downloadState = .idle
                 throw error
             }
-            downloadState = .failed(error.localizedDescription)
+            let msg = "下载失败: \(error.localizedDescription)"
+            Log.asr(msg)
+            downloadState = .failed(msg)
             throw error
         }
+
+        let archiveSize = (try? archiveURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        Log.asr("归档下载完成: \(archiveFilename) (\(archiveSize / 1_048_576)MB)")
+
+        // 阶段2: 解压 bzip2 → tar
+        Log.asr("开始解压 bzip2...")
+        downloadState = .extracting(progress: 0)
+        do {
+            try await decompressBzip2(input: archiveURL, output: tarURL)
+        } catch {
+            isDownloading = false
+            let msg = "解压失败: \(error.localizedDescription)"
+            Log.asr(msg)
+            downloadState = .failed(msg)
+            throw DownloadError.extractionFailed(error.localizedDescription)
+        }
+
+        let tarSize = (try? tarURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        Log.asr("bzip2 解压完成，tar 大小: \(tarSize / 1_048_576)MB")
+
+        // 阶段3: 从 tar 中提取 model.onnx/model.int8.onnx + tokens.txt
+        Log.asr("开始从 tar 提取模型文件...")
+        downloadState = .extracting(progress: 0.5)
+        do {
+            try await extractFilesFromTar(tarURL: tarURL, quality: quality)
+        } catch {
+            isDownloading = false
+            let msg = "提取文件失败: \(error.localizedDescription)"
+            Log.asr(msg)
+            downloadState = .failed(msg)
+            throw DownloadError.extractionFailed(error.localizedDescription)
+        }
+
+        // 验证
+        guard Self.isModelDownloaded(quality) else {
+            let msg = "下载完成但验证失败，文件缺失"
+            Log.asr(msg)
+            downloadState = .failed(msg)
+            isDownloading = false
+            throw DownloadError.verificationFailed
+        }
+
+        isDownloading = false
+        downloadState = .completed(Date())
+        let modelSize = Self.downloadedModelSize(quality)
+        Log.asr("模型下载并验证完成: \(quality.rawValue) (模型 \(modelSize / 1_048_576)MB)")
     }
 
-    /// 下载单个文件（小文件 / 无进度需求）
-    private func downloadFile(filename: String, to targetURL: URL) async throws {
+    // MARK: - 下载归档文件（带进度）
+
+    private func downloadArchive(filename: String, to targetURL: URL, quality: ModelQuality) async throws {
         guard let url = URL(string: "\(Self.baseURL)/\(filename)") else {
             throw DownloadError.invalidURL
         }
-
-        let (data, response) = try await URLSession.shared.data(from: url)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode)
-        else {
-            throw DownloadError.httpError((response as? HTTPURLResponse)?.statusCode ?? 0)
-        }
-        try data.write(to: targetURL)
-    }
-
-    /// 下载模型文件（大文件，带进度）
-    private func downloadModelFile(filename: String, to targetURL: URL, quality: ModelQuality) async throws {
-        guard let url = URL(string: "\(Self.baseURL)/\(filename)") else {
-            throw DownloadError.invalidURL
-        }
+        Log.asrDebug("下载 URL: \(url.absoluteString)")
 
         return try await withCheckedThrowingContinuation { continuation in
-            let delegate = DownloadDelegate(quality: quality) { [weak self] progress in
+            let delegate = DownloadProgressDelegate { [weak self] progress in
                 Task { @MainActor [weak self] in
                     self?.downloadProgress = progress
                     self?.downloadState = .downloading(progress: progress)
@@ -184,42 +231,178 @@ final class ModelDownloadManager: ObservableObject {
                     self?.downloadSession = nil
                     switch result {
                     case .success(let tempURL):
-                        // 临时文件仅在 completion handler 内有效，需要立即复制
                         defer { try? FileManager.default.removeItem(at: tempURL) }
                         do {
-                            // 如果目标文件已存在，先删除
                             try? FileManager.default.removeItem(at: targetURL)
                             try FileManager.default.copyItem(at: tempURL, to: targetURL)
+                            Log.asrDebug("归档文件已保存到: \(targetURL.path)")
                             continuation.resume()
                         } catch {
+                            Log.asr("复制下载文件失败: \(error.localizedDescription)")
                             continuation.resume(throwing: error)
                         }
                     case .failure(let error):
-                        continuation.resume(throwing: error)
+                        let nsError = error as NSError
+                        if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
+                            continuation.resume(throwing: CancellationError())
+                        } else {
+                            Log.asr("下载网络错误: \(error.localizedDescription)")
+                            continuation.resume(throwing: error)
+                        }
                     }
                 }
             }
 
-            let task: URLSessionDownloadTask
-            if let resumeData = currentResumeData {
-                task = session.downloadTask(withResumeData: resumeData)
-                currentResumeData = nil
-            } else {
-                task = session.downloadTask(with: url)
-            }
+            let task = session.downloadTask(with: url)
             self.currentTask = task
             task.resume()
+            Log.asrDebug("下载任务已启动")
         }
+    }
+
+    // MARK: - bzip2 解压
+
+    private func decompressBzip2(input: URL, output: URL) async throws {
+        Log.asrDebug("bzip2 解压: \(input.path) -> \(output.path)")
+        let result = bzip2_decompress_file(input.path, output.path)
+        guard result == 0 else {
+            let msg = "bzip2 解压错误，错误码: \(result)"
+            Log.asr(msg)
+            throw DownloadError.extractionFailed(msg)
+        }
+        Log.asrDebug("bzip2 解压完成")
+    }
+
+    // MARK: - tar 提取
+
+    private func extractFilesFromTar(tarURL: URL, quality: ModelQuality) async throws {
+        let targetModelFile = quality.modelFilename
+        var foundModel = false
+        var foundTokens = false
+
+        let fileHandle = try FileHandle(forReadingFrom: tarURL)
+        defer { try? fileHandle.close() }
+
+        let modelTargetURL = Self.modelFilePath(quality)
+        let tokensTargetURL = Self.tokensFilePath()
+
+        // 删除旧的 tokens.txt（如果存在且是其他版本的）
+        // 保留不删，因为新下载会覆盖
+
+        Log.asrDebug("开始解析 tar，目标文件: \(targetModelFile), tokens.txt")
+
+        while true {
+            // 读取 512 字节的 tar header
+            guard let headerData = try? fileHandle.read(upToCount: 512),
+                  headerData.count == 512 else {
+                Log.asrDebug("无法读取 tar header，停止解析")
+                break
+            }
+
+            // 检查是否到了 tar 结束标记（全零块）
+            if headerData.allSatisfy({ $0 == 0 }) {
+                // 读取下一个 block 确认
+                if let nextBlock = try? fileHandle.read(upToCount: 512),
+                   nextBlock.allSatisfy({ $0 == 0 }) {
+                    Log.asrDebug("遇到 tar 结束标记")
+                    break
+                }
+                // 如果不是全零，回退（不应该发生，但防御性处理）
+                try? fileHandle.seek(toOffset: fileHandle.offsetInFile - 512)
+                break
+            }
+
+            // 解析文件名（offset 0, 长度 100）
+            let nameData = headerData[0..<100]
+            guard let name = String(data: nameData, encoding: .utf8)?
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\0"))
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/")) else {
+                continue
+            }
+
+            // 去掉归档根目录前缀
+            let shortName: String
+            if let slashRange = name.range(of: "/") {
+                shortName = String(name[slashRange.upperBound...])
+            } else {
+                shortName = name
+            }
+
+            // 解析文件大小（offset 124, 长度 12, 八进制字符串）
+            let sizeData = headerData[124..<136]
+            guard let sizeStr = String(data: sizeData, encoding: .utf8)?
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")),
+                  let fileSize = UInt64(sizeStr, radix: 8) else {
+                continue
+            }
+
+            let isTargetModel = (shortName == targetModelFile)
+            let isTargetTokens = (shortName == "tokens.txt")
+            let isNeeded = isTargetModel || isTargetTokens
+
+            if isNeeded {
+                Log.asrDebug("找到目标文件: \(shortName) (\(fileSize / 1_048_576)MB)")
+            }
+
+            // 计算需要读取的数据块数（512 字节对齐）
+            let paddedSize = ((fileSize + 511) / 512) * 512
+
+            if isNeeded {
+                // 读取文件数据
+                let fileData: Data
+                if fileSize > 0 {
+                    guard let data = try? fileHandle.read(upToCount: Int(fileSize)) else {
+                        throw DownloadError.extractionFailed("读取 tar 条目失败: \(shortName)")
+                    }
+                    fileData = data
+                } else {
+                    fileData = Data()
+                }
+
+                let targetURL = isTargetModel ? modelTargetURL : tokensTargetURL
+                try? FileManager.default.removeItem(at: targetURL)
+                try fileData.write(to: targetURL)
+
+                if isTargetModel { foundModel = true }
+                if isTargetTokens { foundTokens = true }
+                Log.asr("提取完成: \(shortName) -> \(targetURL.lastPathComponent)")
+
+                // 跳过 padding（数据已读取 fileSize 字节，还需跳过 padding - fileSize）
+                let padding = Int(paddedSize - fileSize)
+                if padding > 0 {
+                    try? fileHandle.read(upToCount: padding)
+                }
+            } else {
+                // 不需要此文件，跳过
+                if paddedSize > 0 {
+                    try? fileHandle.seek(toOffset: fileHandle.offsetInFile + paddedSize)
+                }
+            }
+
+            if foundModel && foundTokens {
+                Log.asrDebug("两个目标文件均已找到，停止解析")
+                break
+            }
+        }
+
+        guard foundModel else {
+            throw DownloadError.extractionFailed("归档中未找到 \(targetModelFile)")
+        }
+        guard foundTokens else {
+            throw DownloadError.extractionFailed("归档中未找到 tokens.txt")
+        }
+
+        Log.asr("tar 提取完成: model=\(foundModel), tokens=\(foundTokens)")
     }
 
     /// 取消当前下载
     func cancelDownload() {
-        currentTask?.cancel { [weak self] resumeData in
-            Task { @MainActor [weak self] in
-                self?.currentResumeData = resumeData
-            }
-        }
+        Log.asr("用户取消下载")
+        currentTask?.cancel()
         currentTask = nil
+        downloadSession?.invalidateAndCancel()
+        downloadSession = nil
+        isDownloading = false
         downloadState = .idle
     }
 
@@ -249,25 +432,27 @@ enum DownloadError: LocalizedError {
     case invalidURL
     case httpError(Int)
     case insufficientDiskSpace
+    case extractionFailed(String)
+    case verificationFailed
 
     var errorDescription: String? {
         switch self {
         case .invalidURL: return "无效的下载地址"
         case .httpError(let code): return "服务器错误 (HTTP \(code))"
         case .insufficientDiskSpace: return "磁盘空间不足"
+        case .extractionFailed(let msg): return "解压错误: \(msg)"
+        case .verificationFailed: return "下载完成但文件验证失败，请重试"
         }
     }
 }
 
 // MARK: - URLSessionDownloadDelegate
 
-private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
-    let quality: ModelQuality
+private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate {
     let onProgress: (Double) -> Void
     var onCompletion: ((Result<URL, Error>) -> Void)?
 
-    init(quality: ModelQuality, onProgress: @escaping (Double) -> Void) {
-        self.quality = quality
+    init(onProgress: @escaping (Double) -> Void) {
         self.onProgress = onProgress
     }
 
@@ -294,7 +479,6 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
                     didCompleteWithError error: Error?) {
         if let error {
             let nsError = error as NSError
-            // 如果是用户取消，不视为错误（由 cancelDownload 处理）
             if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
                 return
             }
