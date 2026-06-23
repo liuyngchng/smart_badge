@@ -107,12 +107,16 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = state.copy(isTesting = true, testResults = emptyList(), showResults = false)
 
         viewModelScope.launch {
-            // Save all fields first
+            // Save all fields first (including mode settings)
             settingsDataStore.updateAsrUrl(state.asrUrl)
             settingsDataStore.updateLlmUrl(state.llmUrl)
             settingsDataStore.updateLlmKey(state.llmKey)
             settingsDataStore.updateLlmModel(state.llmModel)
             settingsDataStore.updateLlmPrompt(state.llmPrompt)
+            settingsDataStore.updateAsrMode(state.asrMode)
+            settingsDataStore.updateOfflineModelQuality(state.offlineModelQuality)
+            settingsDataStore.updateLlmMode(state.llmMode)
+            settingsDataStore.updateLlmModelInfo(state.llmModelInfo)
 
             // Verify saved by reading back
             settingsDataStore.settingsFlow.first()

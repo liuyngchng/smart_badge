@@ -1,6 +1,7 @@
 package com.voicenote.app.core.llm
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -100,6 +101,48 @@ class LLMModelManager @Inject constructor(
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "下载失败: ${e.message}", e)
+            _downloadState.value = LLMDownloadState(LLMDownloadStatus.FAILED, 0f, e.message)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun uploadModel(info: LLMModelInfo, sourceUri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            _downloadState.value = LLMDownloadState(LLMDownloadStatus.DOWNLOADING, 0f)
+
+            val targetFile = File(modelFilePath(info))
+            targetFile.parentFile?.mkdirs()
+
+            context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                FileOutputStream(targetFile).use { output ->
+                    val totalBytes = input.available().toLong()
+                    var copiedBytes = 0L
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        copiedBytes += bytesRead
+                        if (totalBytes > 0) {
+                            _downloadState.value = LLMDownloadState(
+                                LLMDownloadStatus.DOWNLOADING,
+                                copiedBytes.toFloat() / totalBytes
+                            )
+                        }
+                    }
+                }
+            } ?: return@withContext Result.failure(Exception("无法读取文件"))
+
+            val fileSize = targetFile.length()
+            if (fileSize < 10_000_000) {
+                targetFile.delete()
+                return@withContext Result.failure(Exception("上传的文件过小，可能无效"))
+            }
+
+            _downloadState.value = LLMDownloadState(LLMDownloadStatus.COMPLETED, 1f)
+            Log.i(TAG, "模型上传完成: ${info.name} (${fileSize / 1_048_576}MB)")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "上传失败: ${e.message}", e)
             _downloadState.value = LLMDownloadState(LLMDownloadStatus.FAILED, 0f, e.message)
             Result.failure(e)
         }

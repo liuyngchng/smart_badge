@@ -1,6 +1,7 @@
 package com.voicenote.app.core.asr
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -168,6 +169,47 @@ class ModelDownloadManager @Inject constructor(
 
         if (!foundModel) throw Exception("归档中未找到 $targetModelFile")
         if (!foundTokens) throw Exception("归档中未找到 tokens.txt")
+    }
+
+    suspend fun uploadModel(quality: ModelQuality, sourceUri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            _downloadState.value = DownloadState(DownloadStatus.DOWNLOADING, 0f)
+
+            val targetFile = File(modelFilePath(quality))
+            targetFile.parentFile?.mkdirs()
+
+            context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                FileOutputStream(targetFile).use { output ->
+                    val totalBytes = input.available().toLong()
+                    var copiedBytes = 0L
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        copiedBytes += bytesRead
+                        if (totalBytes > 0) {
+                            _downloadState.value = DownloadState(
+                                DownloadStatus.DOWNLOADING,
+                                copiedBytes.toFloat() / totalBytes
+                            )
+                        }
+                    }
+                }
+            } ?: return@withContext Result.failure(Exception("无法读取文件"))
+
+            if (targetFile.length() < 1_000_000) {
+                targetFile.delete()
+                return@withContext Result.failure(Exception("上传的文件过小，可能无效"))
+            }
+
+            _downloadState.value = DownloadState(DownloadStatus.COMPLETED, 1f)
+            Log.i(TAG, "模型上传完成: ${quality.name}")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "上传失败: ${e.message}", e)
+            _downloadState.value = DownloadState(DownloadStatus.FAILED, 0f, e.message)
+            Result.failure(e)
+        }
     }
 
     fun deleteModel(quality: ModelQuality) {
