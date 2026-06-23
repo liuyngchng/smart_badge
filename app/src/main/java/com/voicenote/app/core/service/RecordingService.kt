@@ -7,10 +7,13 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.voicenote.app.MainActivity
+import com.voicenote.app.R
 import com.voicenote.app.core.asr.ASRMode
 import com.voicenote.app.core.asr.AsrEvent
 import com.voicenote.app.core.asr.FunASRClient
@@ -149,7 +152,11 @@ class RecordingService : Service() {
         ).apply { acquire() }
 
         // Start foreground
-        startForeground(NOTIFICATION_ID, buildNotification("录音中..."))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, buildNotification("录音中..."), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification("录音中..."))
+        }
 
         // Initialize audio file recording
         audioFileManager.startNewRecording(recordId, java.time.Instant.now())
@@ -362,11 +369,11 @@ class RecordingService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("语音笔记")
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setSmallIcon(R.drawable.ic_notification_mic)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .addAction(
-                android.R.drawable.ic_media_pause,
+                R.drawable.ic_notification_stop,
                 "结束",
                 PendingIntent.getService(
                     this, 1,
