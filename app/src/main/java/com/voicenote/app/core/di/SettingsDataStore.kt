@@ -15,9 +15,9 @@ import javax.inject.Singleton
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 data class AppSettings(
-    val asrUrl: String = "ws://192.168.27.29:10095",
+    val asrUrl: String = "ws://192.168.240.29:10095",
     val llmUrl: String = "https://api.deepseek.com",
-    val llmKey: String = "sk-0220a5e0d8ff4d39828859be52563df1",
+    val llmKey: String = "",
     val llmModel: String = "deepseek-v4-pro",
     val llmPrompt: String = "",
     val asrMode: String = "online",
@@ -44,9 +44,9 @@ class SettingsDataStore @Inject constructor(
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { prefs ->
         AppSettings(
-            asrUrl = prefs[Keys.ASR_URL] ?: "ws://192.168.27.29:10095",
+            asrUrl = prefs[Keys.ASR_URL] ?: "ws://192.168.240.29:10095",
             llmUrl = prefs[Keys.LLM_URL] ?: "https://api.deepseek.com",
-            llmKey = prefs[Keys.LLM_KEY] ?: "sk-0220a5e0d8ff4d39828859be52563df1",
+            llmKey = prefs[Keys.LLM_KEY] ?: "",
             llmModel = prefs[Keys.LLM_MODEL] ?: "deepseek-v4-pro",
             llmPrompt = prefs[Keys.LLM_PROMPT] ?: "",
             asrMode = prefs[Keys.ASR_MODE] ?: "online",

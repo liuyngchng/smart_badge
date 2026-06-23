@@ -83,7 +83,7 @@ fun OfflineASRSettingsView(
                 value = asrUrl,
                 onValueChange = onAsrUrlChange,
                 label = { Text("WebSocket 地址") },
-                placeholder = { Text("ws://192.168.1.100:10095") },
+                placeholder = { Text("ws://192.168.240.29:10095") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(8.dp)
@@ -182,7 +182,16 @@ fun OfflineASRSettingsView(
                     }
                 }
                 DownloadStatus.COMPLETED -> {
-                    Text("模型已就绪", color = MaterialTheme.colorScheme.primary)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("模型已就绪", color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.weight(1f))
+                        OutlinedButton(onClick = {
+                            downloadManager.deleteModel(quality)
+                            downloadManager.resetState()
+                        }) {
+                            Text("删除模型")
+                        }
+                    }
                 }
                 DownloadStatus.FAILED -> {
                     Column {

@@ -102,12 +102,9 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsDataStore.updateLlmModelInfo(info) }
     }
 
-    fun saveAndTest() {
+    fun save() {
         val state = _uiState.value
-        _uiState.value = state.copy(isTesting = true, testResults = emptyList(), showResults = false)
-
         viewModelScope.launch {
-            // Save all fields first (including mode settings)
             settingsDataStore.updateAsrUrl(state.asrUrl)
             settingsDataStore.updateLlmUrl(state.llmUrl)
             settingsDataStore.updateLlmKey(state.llmKey)
@@ -117,36 +114,32 @@ class SettingsViewModel @Inject constructor(
             settingsDataStore.updateOfflineModelQuality(state.offlineModelQuality)
             settingsDataStore.updateLlmMode(state.llmMode)
             settingsDataStore.updateLlmModelInfo(state.llmModelInfo)
+        }
+    }
 
-            // Verify saved by reading back
-            settingsDataStore.settingsFlow.first()
+    fun testConnection() {
+        val state = _uiState.value
+        _uiState.value = state.copy(isTesting = true, testResults = emptyList(), showResults = false)
 
-            // Run connectivity tests in parallel
+        viewModelScope.launch {
+            // Always test online connections
             val asrDeferred = async {
-                val result = if (state.asrMode == "offline") {
-                    connectivityChecker.checkAsrOffline(state.offlineModelQuality)
-                } else {
-                    connectivityChecker.checkAsrConnection(state.asrUrl)
-                }
+                val result = connectivityChecker.checkAsrConnection(state.asrUrl)
                 TestResult(
-                    name = if (state.asrMode == "offline") "语音识别 (离线 SenseVoice)" else "语音识别 (FunASR)",
+                    name = "语音识别 (FunASR)",
                     success = result.isSuccess,
                     message = result.getOrElse { it.message ?: "未知错误" }
                 )
             }
 
             val llmDeferred = async {
-                val result = if (state.llmMode == "offline") {
-                    connectivityChecker.checkLlmOffline(state.llmModelInfo)
-                } else {
-                    connectivityChecker.checkLlmConnection(
-                        state.llmUrl,
-                        state.llmKey,
-                        state.llmModel
-                    )
-                }
+                val result = connectivityChecker.checkLlmConnection(
+                    state.llmUrl,
+                    state.llmKey,
+                    state.llmModel
+                )
                 TestResult(
-                    name = if (state.llmMode == "offline") "AI 总结 (离线 Qwen)" else "AI 总结 (LLM)",
+                    name = "AI 总结 (LLM)",
                     success = result.isSuccess,
                     message = result.getOrElse { it.message ?: "未知错误" }
                 )

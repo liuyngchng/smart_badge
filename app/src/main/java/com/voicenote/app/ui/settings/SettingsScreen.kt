@@ -26,6 +26,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -129,9 +130,20 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Save & Test button
+            // Save button
             Button(
-                onClick = viewModel::saveAndTest,
+                onClick = viewModel::save,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("保存")
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Test connection button
+            OutlinedButton(
+                onClick = viewModel::testConnection,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 enabled = !uiState.isTesting,
                 shape = RoundedCornerShape(12.dp)
@@ -139,13 +151,12 @@ fun SettingsScreen(
                 if (uiState.isTesting) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
                         strokeWidth = 2.dp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("正在测试连接...")
                 } else {
-                    Text("保存")
+                    Text("测试连接")
                 }
             }
 

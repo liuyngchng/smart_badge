@@ -198,7 +198,16 @@ fun OfflineLLMSettingsView(
                     }
                 }
                 LLMDownloadStatus.COMPLETED -> {
-                    Text("模型已就绪", color = MaterialTheme.colorScheme.primary)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("模型已就绪", color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.weight(1f))
+                        OutlinedButton(onClick = {
+                            modelManager.deleteModel(info)
+                            modelManager.resetState()
+                        }) {
+                            Text("删除模型")
+                        }
+                    }
                 }
                 LLMDownloadStatus.FAILED -> {
                     Column {
