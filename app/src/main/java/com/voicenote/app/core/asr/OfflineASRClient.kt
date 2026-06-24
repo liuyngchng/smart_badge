@@ -133,10 +133,21 @@ class OfflineASRClient @Inject constructor(
 
         init {
             try {
-                System.loadLibrary("sherpa_onnx_jni")
-                isNativeAvailable = true
+                System.loadLibrary("onnxruntime")
+            } catch (_: UnsatisfiedLinkError) {
+                Log.w(TAG, "onnxruntime native library not available")
+            }
+            try {
+                System.loadLibrary("sherpa-onnx-c-api")
             } catch (_: UnsatisfiedLinkError) {
                 Log.w(TAG, "sherpa-onnx native library not available")
+            }
+            try {
+                System.loadLibrary("sherpa_onnx_jni")
+                isNativeAvailable = true
+                Log.i(TAG, "sherpa-onnx JNI bridge loaded successfully")
+            } catch (_: UnsatisfiedLinkError) {
+                Log.w(TAG, "sherpa-onnx JNI bridge not available — offline ASR disabled")
             }
         }
     }

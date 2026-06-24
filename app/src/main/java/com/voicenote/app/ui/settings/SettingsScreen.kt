@@ -1,7 +1,6 @@
 package com.voicenote.app.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -20,13 +20,13 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,11 +38,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.compose.ui.platform.LocalContext
 import com.voicenote.app.BuildConfig
 import com.voicenote.app.core.asr.ModelDownloadManager
 import com.voicenote.app.core.llm.LLMModelManager
@@ -82,9 +82,8 @@ fun SettingsScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -93,88 +92,105 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
                 .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ASR Settings (online/offline switch)
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(16.dp))
-            OfflineASRSettingsView(
-                asrMode = uiState.asrMode,
-                asrUrl = uiState.asrUrl,
-                modelQuality = uiState.offlineModelQuality,
-                onAsrModeChange = viewModel::updateAsrMode,
-                onAsrUrlChange = viewModel::updateAsrUrl,
-                onModelQualityChange = viewModel::updateOfflineModelQuality,
-                downloadManager = downloadManager
-            )
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // LLM Settings (online/offline switch)
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(16.dp))
-            OfflineLLMSettingsView(
-                llmMode = uiState.llmMode,
-                llmUrl = uiState.llmUrl,
-                llmKey = uiState.llmKey,
-                llmModel = uiState.llmModel,
-                llmModelInfo = uiState.llmModelInfo,
-                onLlmModeChange = viewModel::updateLlmMode,
-                onLlmUrlChange = viewModel::updateLlmUrl,
-                onLlmKeyChange = viewModel::updateLlmKey,
-                onLlmModelChange = viewModel::updateLlmModel,
-                onLlmModelInfoChange = viewModel::updateLlmModelInfo,
-                modelManager = llmModelManager
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Save button
-            Button(
-                onClick = viewModel::save,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(12.dp)
+            // ═══ ASR Settings Card ═══
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
             ) {
-                Text("保存")
+                Column(modifier = Modifier.padding(20.dp)) {
+                    OfflineASRSettingsView(
+                        asrMode = uiState.asrMode,
+                        asrUrl = uiState.asrUrl,
+                        modelQuality = uiState.offlineModelQuality,
+                        onAsrModeChange = viewModel::updateAsrMode,
+                        onAsrUrlChange = viewModel::updateAsrUrl,
+                        onModelQualityChange = viewModel::updateOfflineModelQuality,
+                        downloadManager = downloadManager
+                    )
+                }
             }
 
-            // Test connection button (only when at least one service is online)
-            if (uiState.asrMode == "online" || uiState.llmMode == "online") {
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedButton(
-                    onClick = viewModel::testConnection,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    enabled = !uiState.isTesting,
-                    shape = RoundedCornerShape(12.dp)
+            // ═══ LLM Settings Card ═══
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    OfflineLLMSettingsView(
+                        llmMode = uiState.llmMode,
+                        llmUrl = uiState.llmUrl,
+                        llmKey = uiState.llmKey,
+                        llmModel = uiState.llmModel,
+                        llmModelInfo = uiState.llmModelInfo,
+                        onLlmModeChange = viewModel::updateLlmMode,
+                        onLlmUrlChange = viewModel::updateLlmUrl,
+                        onLlmKeyChange = viewModel::updateLlmKey,
+                        onLlmModelChange = viewModel::updateLlmModel,
+                        onLlmModelInfoChange = viewModel::updateLlmModelInfo,
+                        modelManager = llmModelManager
+                    )
+                }
+            }
+
+            // ═══ Actions ═══
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Save
+                Button(
+                    onClick = viewModel::save,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
-                    if (uiState.isTesting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp
+                    Text("保存", style = MaterialTheme.typography.titleSmall)
+                }
+
+                // Test connection
+                if (uiState.asrMode == "online" || uiState.llmMode == "online") {
+                    Button(
+                        onClick = viewModel::testConnection,
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        enabled = !uiState.isTesting,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("正在测试连接...")
-                    } else {
-                        Text("测试连接")
+                    ) {
+                        if (uiState.isTesting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("测试中...")
+                        } else {
+                            Text("测试连接")
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Version
+            // ═══ Version ═══
             Text(
-                text = "版本: ${BuildConfig.BUILD_TIMESTAMP}",
+                text = "版本 ${BuildConfig.BUILD_TIMESTAMP}",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
                 textAlign = TextAlign.Center
             )
         }
     }
 
-    // Test results dialog
+    // ── Test results dialog ────────────────────────────────────────────────
     if (uiState.showResults) {
         AlertDialog(
             onDismissRequest = viewModel::dismissResults,
@@ -187,7 +203,8 @@ fun SettingsScreen(
                                 Icon(
                                     imageVector = if (result.success) Icons.Default.Check else Icons.Default.Close,
                                     contentDescription = null,
-                                    tint = if (result.success) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                    tint = if (result.success) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.error,
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))

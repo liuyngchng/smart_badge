@@ -61,6 +61,7 @@ class RecordingService : Service() {
     private var currentAsrMode: ASRMode = ASRMode.ONLINE
     private var currentLlmMode: LLMMode = LLMMode.ONLINE
     private var currentLlmModelInfo: LLMModelInfo = LLMModelInfo.QWEN2_5_0_5B
+    private var currentOfflineModelQuality: ModelQuality = ModelQuality.INT8
     private val offlinePcmBuffer = mutableListOf<ByteArray>()
 
     companion object {
@@ -78,6 +79,7 @@ class RecordingService : Service() {
         const val EXTRA_ASR_MODE = "asr_mode"
         const val EXTRA_LLM_MODE = "llm_mode"
         const val EXTRA_LLM_MODEL_INFO = "llm_model_info"
+        const val EXTRA_OFFLINE_MODEL_QUALITY = "offline_model_quality"
 
         // Observables for UI binding
         private val _transcriptState = MutableStateFlow("")
@@ -114,7 +116,8 @@ class RecordingService : Service() {
                 val asrMode = ASRMode.fromString(intent.getStringExtra(EXTRA_ASR_MODE) ?: "online")
                 val llmMode = LLMMode.fromString(intent.getStringExtra(EXTRA_LLM_MODE) ?: "online")
                 val llmModelInfo = LLMModelInfo.fromString(intent.getStringExtra(EXTRA_LLM_MODEL_INFO) ?: "qwen2_5_0_5b_q4km")
-                startRecording(recordId, asrUrl, llmUrl, llmKey, llmModel, llmPrompt, asrMode, llmMode, llmModelInfo)
+                val offlineModelQuality = intent.getStringExtra(EXTRA_OFFLINE_MODEL_QUALITY) ?: "int8"
+                startRecording(recordId, asrUrl, llmUrl, llmKey, llmModel, llmPrompt, asrMode, llmMode, llmModelInfo, offlineModelQuality)
             }
             ACTION_STOP -> stopRecording()
         }
@@ -132,12 +135,14 @@ class RecordingService : Service() {
         llmPrompt: String?,
         asrMode: ASRMode = ASRMode.ONLINE,
         llmMode: LLMMode = LLMMode.ONLINE,
-        llmModelInfo: LLMModelInfo = LLMModelInfo.QWEN2_5_0_5B
+        llmModelInfo: LLMModelInfo = LLMModelInfo.QWEN2_5_0_5B,
+        offlineModelQualityStr: String = "int8"
     ) {
         currentRecordId = recordId
         currentAsrMode = asrMode
         currentLlmMode = llmMode
         currentLlmModelInfo = llmModelInfo
+        currentOfflineModelQuality = ModelQuality.fromString(offlineModelQualityStr)
         _isRecording.value = true
         mutableTranscript.clear()
         offlinePcmBuffer.clear()
@@ -219,7 +224,7 @@ class RecordingService : Service() {
     private fun startOfflineASR() {
         recordingJob = serviceScope.launch {
             try {
-                val quality = ModelQuality.INT8
+                val quality = currentOfflineModelQuality
                 offlineASRClient.ensureRecognizer(quality)
 
                 var chunkStart = 0L

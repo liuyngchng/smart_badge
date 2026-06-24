@@ -89,6 +89,7 @@ class RecordingViewModel @Inject constructor(
             putExtra(RecordingService.EXTRA_ASR_MODE, settings.asrMode)
             putExtra(RecordingService.EXTRA_LLM_MODE, settings.llmMode)
             putExtra(RecordingService.EXTRA_LLM_MODEL_INFO, settings.llmModelInfo)
+            putExtra(RecordingService.EXTRA_OFFLINE_MODEL_QUALITY, settings.offlineModelQuality)
             if (settings.llmPrompt.isNotBlank()) {
                 putExtra(RecordingService.EXTRA_LLM_PROMPT, settings.llmPrompt)
             }
