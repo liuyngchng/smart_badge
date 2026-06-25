@@ -17,7 +17,7 @@ object LlamaBridge {
 
     fun isAvailable(): Boolean = nativeLoaded
 
-    external fun loadModel(path: String, gpuLayers: Int, contextLength: Int): Boolean
+    external fun loadModel(path: String, gpuLayers: Int, contextLength: Int, nThreads: Int): Boolean
 
     fun generate(prompt: String, systemPrompt: String?, maxTokens: Int, temperature: Float): String? {
         Log.i(TAG, "开始推理: promptLen=${prompt.length}, maxTokens=$maxTokens, temperature=$temperature")

@@ -9,7 +9,7 @@
 
 JNIEXPORT jboolean JNICALL
 Java_com_voicenote_app_core_llm_LlamaBridge_loadModel(
-    JNIEnv *env, jclass clazz, jstring path, jint gpu_layers, jint ctx_len) {
+    JNIEnv *env, jclass clazz, jstring path, jint gpu_layers, jint ctx_len, jint n_threads) {
     LOGI("Stub: loadModel called but llama.cpp not available");
     return JNI_FALSE;
 }

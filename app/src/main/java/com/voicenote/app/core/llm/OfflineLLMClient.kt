@@ -54,6 +54,7 @@ class OfflineLLMClient @Inject constructor(
         val isLowMemory = totalMemMB < 3 * 1024  // < 3GB
         val gpuLayers = if (isLowMemory) 0 else 99
         val ctxLen = 2048
+        val nThreads = Runtime.getRuntime().availableProcessors()
 
         if (isLowMemory) {
             Log.i(TAG, "低内存设备 (${totalMemMB}MB)，使用 CPU-only 推理")
@@ -63,12 +64,12 @@ class OfflineLLMClient @Inject constructor(
             throw IllegalStateException("llama.cpp native library not available")
         }
 
-        val success = LlamaBridge.loadModel(modelPath, gpuLayers, ctxLen)
+        val success = LlamaBridge.loadModel(modelPath, gpuLayers, ctxLen, nThreads)
         check(success) { "模型加载失败: $modelPath" }
 
         isInitialized = true
         currentModelInfo = modelInfo
-        Log.i(TAG, "离线 LLM 模型就绪: ${modelInfo.name}, gpuLayers=$gpuLayers")
+        Log.i(TAG, "离线 LLM 模型就绪: ${modelInfo.name}, gpuLayers=$gpuLayers, threads=$nThreads")
     }
 
     suspend fun generateSummary(
@@ -106,7 +107,7 @@ class OfflineLLMClient @Inject constructor(
                 val rawOutput = LlamaBridge.generate(
                     promptText,
                     systemPrompt,
-                    256,
+                    128,
                     0.3f
                 )
 

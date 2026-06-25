@@ -19,7 +19,7 @@ static int g_is_loaded = 0;
 
 JNIEXPORT jboolean JNICALL
 Java_com_voicenote_app_core_llm_LlamaBridge_loadModel(
-    JNIEnv *env, jclass clazz, jstring path, jint gpu_layers, jint ctx_len) {
+    JNIEnv *env, jclass clazz, jstring path, jint gpu_layers, jint ctx_len, jint n_threads) {
 
     if (g_is_loaded) {
         LOGE("loadModel called while already loaded — unloading first");
@@ -76,8 +76,8 @@ Java_com_voicenote_app_core_llm_LlamaBridge_loadModel(
     struct llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = ctx_len;
     ctx_params.n_batch = 512;
-    ctx_params.n_threads = 4;
-    ctx_params.n_threads_batch = 4;
+    ctx_params.n_threads = n_threads > 0 ? n_threads : 4;
+    ctx_params.n_threads_batch = n_threads > 0 ? n_threads : 4;
 
     g_ctx = llama_init_from_model(g_model, ctx_params);
     if (!g_ctx) {

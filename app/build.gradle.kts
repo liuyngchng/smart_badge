@@ -37,6 +37,10 @@ android {
         versionCode = 1
         versionName = "2.0.0"
         buildConfigField("String", "BUILD_TIMESTAMP", "\"${buildTimestamp}\"")
+
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -65,6 +69,8 @@ android {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
+            cppFlags("-O3", "-DNDEBUG")
+            cFlags("-O3", "-DNDEBUG")
         }
     }
 }
