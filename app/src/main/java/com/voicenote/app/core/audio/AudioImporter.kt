@@ -1,6 +1,7 @@
 package com.voicenote.app.core.audio
 
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.Log
 import com.voicenote.app.core.asr.FunASRClient
@@ -57,6 +58,15 @@ class AudioImporter @Inject constructor(
 
             Log.i(TAG, "导入音频: ${targetFile.absolutePath} (${targetFile.length()} bytes)")
 
+            // Read actual audio duration from file for endTime
+            val durationMs = try {
+                val retriever = MediaMetadataRetriever()
+                retriever.use {
+                    it.setDataSource(targetFile.absolutePath)
+                    it.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0
+                }
+            } catch (_: Exception) { 0L }
+
             val record = VoiceRecord(
                 title = title,
                 memo = "",
@@ -64,6 +74,7 @@ class AudioImporter @Inject constructor(
                 speakers = emptyList(),
                 sourceType = "IMPORTED",
                 startTime = timestamp,
+                endTime = if (durationMs > 0) timestamp.plusMillis(durationMs) else null,
                 audioFilePath = targetFile.absolutePath
             )
 
@@ -91,7 +102,7 @@ class AudioImporter @Inject constructor(
         val transcriptFilePath = if (transcript.isNotBlank() && transcript != FALLBACK_TEXT) {
             val dir = File(context.filesDir, "audio/record_$recordId")
             dir.mkdirs()
-            val txtFile = File(dir, "transcript.txt")
+            val txtFile = File(dir, "${transcriptDateFormatter.format(java.time.Instant.now())}.txt")
             txtFile.writeText(transcript)
             txtFile.absolutePath
         } else {
@@ -156,13 +167,17 @@ class AudioImporter @Inject constructor(
                 offlineLLMClient.generateSummary(transcript, modelInfo, settings.llmPrompt.ifBlank { null })
             }
             else -> {
-                llmClient.generateSummary(
-                    transcript = transcript,
-                    apiUrl = settings.llmUrl,
-                    apiKey = settings.llmKey,
-                    model = settings.llmModel,
-                    customPrompt = settings.llmPrompt.ifBlank { null }
-                )
+                if (settings.llmKey.isBlank()) {
+                    Result.failure(Exception("未配置 LLM API Key，请在设置中填写"))
+                } else {
+                    llmClient.generateSummary(
+                        transcript = transcript,
+                        apiUrl = settings.llmUrl,
+                        apiKey = settings.llmKey,
+                        model = settings.llmModel,
+                        customPrompt = settings.llmPrompt.ifBlank { null }
+                    )
+                }
             }
         }
     }
@@ -171,6 +186,8 @@ class AudioImporter @Inject constructor(
         private const val TAG = "AudioImporter"
         private const val FALLBACK_TEXT = "服务暂时不可用，请采用离线方式"
         private val dateFormatter = DateTimeFormatter.ofPattern("M月d日 HH:mm")
+            .withZone(ZoneId.systemDefault())
+        private val transcriptDateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmm")
             .withZone(ZoneId.systemDefault())
     }
 }

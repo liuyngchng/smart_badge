@@ -53,7 +53,8 @@ data class DetailUiState(
     val isDeleted: Boolean = false,
     val showTranscriptPreview: Boolean = false,
     val isRetryingTranscript: Boolean = false,
-    val isRetryingSummary: Boolean = false
+    val isRetryingSummary: Boolean = false,
+    val lastSummaryError: String? = null
 )
 
 @HiltViewModel
@@ -363,7 +364,7 @@ class DetailViewModel @Inject constructor(
         }
 
         retrySummaryJob = viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isRetryingSummary = true, error = null)
+            _uiState.value = _uiState.value.copy(isRetryingSummary = true, error = null, lastSummaryError = null)
             recordRepository.updateSummaryStatus(record.id, ProcessingStatus.PROCESSING)
 
             try {
@@ -376,9 +377,11 @@ class DetailViewModel @Inject constructor(
                     }
                     else -> {
                         if (settings.llmKey.isBlank()) {
+                            val msg = "未配置 LLM API Key，请在设置中填写"
                             _uiState.value = _uiState.value.copy(
                                 isRetryingSummary = false,
-                                error = "未配置 LLM API Key，请在设置中填写"
+                                error = msg,
+                                lastSummaryError = msg
                             )
                             recordRepository.updateSummaryStatus(record.id, ProcessingStatus.UNAVAILABLE)
                             refreshRecord(record.id)
@@ -400,17 +403,21 @@ class DetailViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(isRetryingSummary = false)
                     refreshRecord(record.id)
                 }.onFailure { e ->
+                    val msg = e.message ?: "AI 总结生成失败"
                     recordRepository.updateSummaryStatus(record.id, ProcessingStatus.UNAVAILABLE)
                     _uiState.value = _uiState.value.copy(
                         isRetryingSummary = false,
-                        error = e.message ?: "AI 总结生成失败"
+                        error = msg,
+                        lastSummaryError = msg
                     )
                     refreshRecord(record.id)
                 }
             } catch (e: Exception) {
+                val msg = e.message ?: "总结重试失败"
                 _uiState.value = _uiState.value.copy(
                     isRetryingSummary = false,
-                    error = e.message ?: "总结重试失败"
+                    error = msg,
+                    lastSummaryError = msg
                 )
             } finally {
                 retrySummaryJob = null

@@ -391,7 +391,7 @@ class RecordingService : Service() {
                         }
                     }
                     LLMMode.ONLINE -> {
-                        if (llmUrl.isNotBlank()) {
+                        if (llmUrl.isNotBlank() && llmKey.isNotBlank()) {
                             recordRepository.updateSummaryStatus(currentRecordId, com.voicenote.app.domain.model.ProcessingStatus.PROCESSING)
                             val summaryResult = retryLlmWithBackoff(transcript, llmUrl, llmKey, llmModel, llmPrompt)
                             summaryResult.onSuccess { summary ->

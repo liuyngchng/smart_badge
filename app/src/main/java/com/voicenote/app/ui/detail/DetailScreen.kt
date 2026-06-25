@@ -188,6 +188,7 @@ fun DetailScreen(
                         2 -> SummaryTab(
                             record = record,
                             isRetrying = uiState.isRetryingSummary,
+                            lastError = uiState.lastSummaryError,
                             onRetry = viewModel::retrySummary,
                             onCancel = viewModel::cancelRetrySummary,
                             onShare = viewModel::shareSummary
@@ -505,6 +506,7 @@ private fun TranscriptTab(
 private fun SummaryTab(
     record: VoiceRecord,
     isRetrying: Boolean,
+    lastError: String?,
     onRetry: () -> Unit,
     onCancel: () -> Unit,
     onShare: () -> Unit
@@ -549,7 +551,11 @@ private fun SummaryTab(
                 Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("总结生成失败", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-                        Text("可尝试手动重新生成", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            lastError ?: "可尝试手动重新生成",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
             }
