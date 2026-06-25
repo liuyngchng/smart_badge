@@ -308,6 +308,7 @@ class DetailViewModel @Inject constructor(
                         val txtFile = File(dir, "$dateStr.txt")
                         txtFile.writeText(text)
                         recordRepository.updateTranscriptWithFile(record.id, text, txtFile.absolutePath)
+                        recordRepository.updateTranscriptStatus(record.id, ProcessingStatus.COMPLETED)
                         _uiState.value = _uiState.value.copy(isRetryingTranscript = false)
                         refreshRecord(record.id)
                     } else {
@@ -395,6 +396,7 @@ class DetailViewModel @Inject constructor(
 
                 result.onSuccess { summary ->
                     recordRepository.updateSummary(record.id, summary)
+                    recordRepository.updateSummaryStatus(record.id, ProcessingStatus.COMPLETED)
                     _uiState.value = _uiState.value.copy(isRetryingSummary = false)
                     refreshRecord(record.id)
                 }.onFailure { e ->

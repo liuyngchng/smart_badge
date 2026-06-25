@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 data class RecordingUiState(
@@ -58,8 +60,12 @@ class RecordingViewModel @Inject constructor(
             val settings = settingsDataStore.settingsFlow.first()
             android.util.Log.e("REC_CRASH", "VM: settings loaded, asrMode=${settings.asrMode}, llmMode=${settings.llmMode}")
 
+            val title = state.title.trim().ifBlank {
+                "新录音 ${dateFormatter.format(java.time.Instant.now())}"
+            }
+
             val record = VoiceRecord(
-                title = state.title,
+                title = title,
                 memo = state.memo,
                 description = state.description,
                 speakers = state.speakers
@@ -141,5 +147,10 @@ class RecordingViewModel @Inject constructor(
             action = RecordingService.ACTION_STOP
         }
         context.startService(intent)
+    }
+
+    companion object {
+        private val dateFormatter = DateTimeFormatter.ofPattern("M月d日 HH:mm")
+            .withZone(ZoneId.systemDefault())
     }
 }

@@ -13,7 +13,10 @@ import com.voicenote.app.core.llm.OfflineLLMClient
 import com.voicenote.app.domain.model.VoiceRecord
 import com.voicenote.app.domain.repository.VoiceRecordRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -33,6 +36,8 @@ class AudioImporter @Inject constructor(
     private val llmClient: LLMClient,
     private val offlineLLMClient: OfflineLLMClient
 ) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     suspend fun importAudio(uri: Uri, settings: AppSettings): Result<Long> = withContext(Dispatchers.IO) {
         try {
             val timestamp = Instant.now()
@@ -63,35 +68,55 @@ class AudioImporter @Inject constructor(
             )
 
             val recordId = recordRepository.createRecord(record)
-            recordRepository.updateTranscriptStatus(recordId, com.voicenote.app.domain.model.ProcessingStatus.PROCESSING)
+            Log.i(TAG, "录音记录已创建: recordId=$recordId，启动后台转写与总结")
 
-            val transcript = runASR(targetFile.absolutePath, settings)
-
-            val transcriptFilePath = audioFileManager.finalizeTranscript(transcript)
-            recordRepository.updateTranscriptWithFile(recordId, transcript, transcriptFilePath)
-            recordRepository.updateTranscriptStatus(
-                recordId,
-                if (transcript == FALLBACK_TEXT) com.voicenote.app.domain.model.ProcessingStatus.UNAVAILABLE
-                else com.voicenote.app.domain.model.ProcessingStatus.COMPLETED
-            )
-
-            if (transcript != FALLBACK_TEXT) {
-                recordRepository.updateSummaryStatus(recordId, com.voicenote.app.domain.model.ProcessingStatus.PROCESSING)
-                val summaryResult = runLLM(transcript, settings)
-                summaryResult.onSuccess { summary ->
-                    recordRepository.updateSummary(recordId, summary)
-                }
-                if (summaryResult.isFailure) {
-                    recordRepository.updateSummaryStatus(recordId, com.voicenote.app.domain.model.ProcessingStatus.UNAVAILABLE)
-                }
+            // Launch ASR + LLM in background; return recordId immediately
+            scope.launch {
+                processAudio(recordId, targetFile.absolutePath, settings)
             }
 
-            Log.i(TAG, "音频导入完成: recordId=$recordId")
             Result.success(recordId)
         } catch (e: Exception) {
             Log.e(TAG, "导入音频失败: ${e.message}", e)
             Result.failure(e)
         }
+    }
+
+    private suspend fun processAudio(recordId: Long, audioFilePath: String, settings: AppSettings) {
+        recordRepository.updateTranscriptStatus(recordId, com.voicenote.app.domain.model.ProcessingStatus.PROCESSING)
+
+        val transcript = runASR(audioFilePath, settings)
+
+        // Write transcript file directly (not via AudioFileManager which depends on recording session state)
+        val transcriptFilePath = if (transcript.isNotBlank() && transcript != FALLBACK_TEXT) {
+            val dir = File(context.filesDir, "audio/record_$recordId")
+            dir.mkdirs()
+            val txtFile = File(dir, "transcript.txt")
+            txtFile.writeText(transcript)
+            txtFile.absolutePath
+        } else {
+            ""
+        }
+
+        recordRepository.updateTranscriptWithFile(recordId, transcript, transcriptFilePath)
+        recordRepository.updateTranscriptStatus(
+            recordId,
+            if (transcript == FALLBACK_TEXT) com.voicenote.app.domain.model.ProcessingStatus.UNAVAILABLE
+            else com.voicenote.app.domain.model.ProcessingStatus.COMPLETED
+        )
+
+        if (transcript != FALLBACK_TEXT) {
+            recordRepository.updateSummaryStatus(recordId, com.voicenote.app.domain.model.ProcessingStatus.PROCESSING)
+            val summaryResult = runLLM(transcript, settings)
+            summaryResult.onSuccess { summary ->
+                recordRepository.updateSummary(recordId, summary)
+            }
+            if (summaryResult.isFailure) {
+                recordRepository.updateSummaryStatus(recordId, com.voicenote.app.domain.model.ProcessingStatus.UNAVAILABLE)
+            }
+        }
+
+        Log.i(TAG, "后台处理完成: recordId=$recordId")
     }
 
     private suspend fun runASR(audioFilePath: String, settings: AppSettings): String {
