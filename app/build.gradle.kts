@@ -41,6 +41,13 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
+
+        externalNativeBuild {
+            cmake {
+                cppFlags("-O3", "-DNDEBUG")
+                cFlags("-O3", "-DNDEBUG")
+            }
+        }
     }
 
     buildTypes {
@@ -69,8 +76,6 @@ android {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
-            cppFlags("-O3", "-DNDEBUG")
-            cFlags("-O3", "-DNDEBUG")
         }
     }
 }
