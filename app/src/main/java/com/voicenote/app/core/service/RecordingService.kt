@@ -162,7 +162,6 @@ class RecordingService : Service() {
             mutableTranscript.clear()
             offlinePcmBuffer.clear()
             _transcriptState.value = ""
-            _durationSeconds.value = 0
             android.util.Log.e("REC_CRASH", "SVC: state vars set, acquiring wake lock")
 
             // Acquire wake lock to keep CPU awake during recording
@@ -188,19 +187,7 @@ class RecordingService : Service() {
             audioFileManager.startNewRecording(recordId, java.time.Instant.now())
             android.util.Log.e("REC_CRASH", "SVC: audio file started")
 
-            // Duration counter
-            var batteryWarned = false
-            durationJob = serviceScope.launch {
-                while (true) {
-                    kotlinx.coroutines.delay(1000)
-                    _durationSeconds.value += 1
-                    if (!batteryWarned && _durationSeconds.value >= 3600L) {
-                        batteryWarned = true
-                        updateNotification("电量提醒：已持续录音1小时，请注意电量")
-                    }
-                }
-            }
-            android.util.Log.e("REC_CRASH", "SVC: duration counter launched, dispatching ASR mode")
+            android.util.Log.e("REC_CRASH", "SVC: dispatching ASR mode")
 
             when (asrMode) {
                 ASRMode.ONLINE -> startOnlineASR(asrUrl)
@@ -257,6 +244,7 @@ class RecordingService : Service() {
             }
 
             android.util.Log.e("REC_CRASH", "SVC: starting audio capture, asrConnected=$asrConnected")
+            startDurationCounter()
             audioCapture.startCapture().collect { audioData ->
                 audioFileManager.writeAudioChunk(audioData)
                 if (asrConnected) {
@@ -292,6 +280,7 @@ class RecordingService : Service() {
                 val chunkIntervalMs = 30_000L
 
                 android.util.Log.e("REC_CRASH", "SVC: offline calling audioCapture.startCapture()")
+                startDurationCounter()
                 audioCapture.startCapture().collect { audioData ->
                     audioFileManager.writeAudioChunk(audioData)
 
@@ -434,6 +423,21 @@ class RecordingService : Service() {
 
         _isRecording.value = false
         updateNotification("录音已结束，正在生成总结...")
+    }
+
+    private fun startDurationCounter() {
+        _durationSeconds.value = 0
+        var batteryWarned = false
+        durationJob = serviceScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(1000)
+                _durationSeconds.value += 1
+                if (!batteryWarned && _durationSeconds.value >= 3600L) {
+                    batteryWarned = true
+                    updateNotification("电量提醒：已持续录音1小时，请注意电量")
+                }
+            }
+        }
     }
 
     private fun buildNotification(text: String): Notification {
