@@ -59,6 +59,7 @@ class RecordingService : Service() {
         })
     private var recordingJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var actualStopTime: java.time.Instant? = null
 
     private val mutableTranscript = StringBuilder()
     private var currentAsrMode: ASRMode = ASRMode.ONLINE
@@ -159,6 +160,7 @@ class RecordingService : Service() {
             currentLlmModelInfo = llmModelInfo
             currentOfflineModelQuality = ModelQuality.fromString(offlineModelQualityStr)
             _isRecording.value = true
+            _durationSeconds.value = 0
             mutableTranscript.clear()
             offlinePcmBuffer.clear()
             _transcriptState.value = ""
@@ -342,7 +344,7 @@ class RecordingService : Service() {
             }
 
             val audioFilePath = audioFileManager.finalizeRecording()
-            recordRepository.updateAudioFilePath(currentRecordId, audioFilePath, java.time.Instant.now())
+            recordRepository.updateAudioFilePath(currentRecordId, audioFilePath, actualStopTime ?: java.time.Instant.now())
 
             var transcript = mutableTranscript.toString()
             val fallbackText = "服务暂时不可用，请采用离线方式"
@@ -404,6 +406,7 @@ class RecordingService : Service() {
     }
 
     private fun stopRecording() {
+        actualStopTime = java.time.Instant.now()
         durationJob?.cancel()
         audioCapture.stopCapture()
 
@@ -425,7 +428,8 @@ class RecordingService : Service() {
         updateNotification("录音已结束，正在生成总结...")
     }
 
-    private fun startDurationCounter() {
+    private suspend fun startDurationCounter() {
+        recordRepository.updateStartTime(currentRecordId, java.time.Instant.now())
         _durationSeconds.value = 0
         var batteryWarned = false
         durationJob = serviceScope.launch {

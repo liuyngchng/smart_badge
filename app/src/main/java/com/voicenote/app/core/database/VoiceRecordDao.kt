@@ -34,6 +34,9 @@ interface VoiceRecordDao {
     @Query("SELECT * FROM voice_records WHERE startTime BETWEEN :from AND :to ORDER BY startTime DESC")
     fun getByDateRangeFlow(from: Long, to: Long): Flow<List<VoiceRecordEntity>>
 
+    @Query("UPDATE voice_records SET startTime = :startTime WHERE id = :id")
+    suspend fun updateStartTime(id: Long, startTime: Long)
+
     @Query("DELETE FROM voice_records WHERE id = :id")
     suspend fun deleteById(id: Long)
 

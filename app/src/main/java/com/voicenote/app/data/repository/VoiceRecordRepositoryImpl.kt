@@ -72,6 +72,10 @@ class VoiceRecordRepositoryImpl @Inject constructor(
         voiceRecordDao.update(entity.copy(summaryStatus = status.name))
     }
 
+    override suspend fun updateStartTime(id: Long, startTime: java.time.Instant) {
+        voiceRecordDao.updateStartTime(id, startTime.toEpochMilli())
+    }
+
     override suspend fun updateAudioFilePath(id: Long, path: String, endTime: java.time.Instant) {
         val entity = voiceRecordDao.getById(id) ?: return
         voiceRecordDao.update(
