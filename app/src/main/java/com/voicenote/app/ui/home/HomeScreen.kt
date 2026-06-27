@@ -263,20 +263,6 @@ private fun VoiceRecordCard(record: VoiceRecord, onClick: () -> Unit) {
                             tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
                         )
                     }
-                    if (record.summary != null) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                        ) {
-                            Text(
-                                "已总结",
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
                 }
             }
             Icon(

@@ -33,6 +33,8 @@ class AudioFileManager @Inject constructor(
         outputStream = FileOutputStream(pcm)
     }
 
+    fun getCurrentPcmFilePath(): String = pcmFile?.absolutePath ?: ""
+
     fun writeAudioChunk(data: ByteArray) {
         outputStream?.write(data)
     }
@@ -46,13 +48,13 @@ class AudioFileManager @Inject constructor(
         val wavFile = File(recordAudioDir, "$baseName.wav")
 
         val pcmLength = pcm.length()
-        val dataSize = pcmLength.toInt()
-        val fileSize = dataSize + 36 // total file bytes minus 8
+        val dataSize = pcmLength // Long to avoid overflow for >18.6h recordings
+        val fileSize = dataSize + 36
 
         FileOutputStream(wavFile).buffered().use { wavOut ->
-            // RIFF header
+            // RIFF header — 32-bit fields, mask to low 32 bits for WAV spec (max ~4GB)
             wavOut.write("RIFF".toByteArray())
-            wavOut.write(intToLittleEndian(fileSize))
+            wavOut.write(intToLittleEndian(fileSize.toInt()))
             wavOut.write("WAVE".toByteArray())
             // fmt sub-chunk
             wavOut.write("fmt ".toByteArray())
@@ -65,7 +67,7 @@ class AudioFileManager @Inject constructor(
             wavOut.write(shortToLittleEndian(16)) // bits per sample
             // data sub-chunk
             wavOut.write("data".toByteArray())
-            wavOut.write(intToLittleEndian(dataSize))
+            wavOut.write(intToLittleEndian(dataSize.toInt()))
             // PCM data
             pcmFile!!.inputStream().buffered().use { pcmIn ->
                 pcmIn.copyTo(wavOut)

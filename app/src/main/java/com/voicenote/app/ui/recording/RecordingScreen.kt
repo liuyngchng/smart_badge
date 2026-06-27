@@ -324,9 +324,20 @@ private fun RecordingContent(
                     .verticalScroll(scrollState)
                     .padding(4.dp)
             ) {
+                // Status indicator during recording
+                if (uiState.statusMessage.isNotBlank()) {
+                    Text(
+                        uiState.statusMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+
                 if (uiState.transcript.isBlank()) {
                     Text(
-                        "语音识别结果将在此显示",
+                        if (uiState.statusMessage.isBlank()) "语音识别结果将在此显示"
+                        else "等待语音输入...",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f),
                         textAlign = TextAlign.Center,
@@ -367,7 +378,7 @@ private fun RecordingContent(
                         strokeWidth = 2.dp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("正在生成总结...", color = Color.White)
+                    Text("正在保存...", color = Color.White)
                 } else {
                     Icon(Icons.Default.Stop, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))

@@ -249,6 +249,7 @@ fun OfflineASRSettingsView(
                 DownloadStatus.FAILED -> {
                     DownloadFailedCard(
                         error = downloadState.error,
+                        downloadUrl = downloadState.downloadUrl,
                         onRetry = {
                             asrModelManager.resetState()
                             scope.launch(Dispatchers.IO) { asrModelManager.downloadModel(quality) }
@@ -373,9 +374,11 @@ private fun DownloadProgressCard(isUploading: Boolean, isExtracting: Boolean, pr
 @Composable
 private fun DownloadFailedCard(
     error: String?,
+    downloadUrl: String?,
     onRetry: () -> Unit,
     onUpload: () -> Unit
 ) {
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
@@ -392,6 +395,28 @@ private fun DownloadFailedCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+        if (downloadUrl != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            androidx.compose.foundation.text.selection.SelectionContainer {
+                Text(
+                    downloadUrl,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            OutlinedButton(
+                onClick = {
+                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(downloadUrl))
+                },
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.height(36.dp)
+            ) {
+                Text("复制链接", style = MaterialTheme.typography.labelSmall)
+            }
         }
         Spacer(modifier = Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

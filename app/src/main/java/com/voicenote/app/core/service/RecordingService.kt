@@ -17,16 +17,12 @@ import com.voicenote.app.R
 import com.voicenote.app.core.asr.ASRMode
 import com.voicenote.app.core.asr.AsrEvent
 import com.voicenote.app.core.asr.FunASRClient
+import com.voicenote.app.core.asr.ASRModelManager
 import com.voicenote.app.core.asr.ModelQuality
 import com.voicenote.app.core.asr.OfflineASRClient
 import com.voicenote.app.core.audio.AudioCapture
 import com.voicenote.app.core.audio.AudioFileManager
-import com.voicenote.app.core.llm.LLMClient
-import com.voicenote.app.core.llm.LLMMode
-import com.voicenote.app.core.llm.LLMModelInfo
-import com.voicenote.app.core.llm.OfflineLLMClient
 import com.voicenote.app.data.repository.VoiceRecordRepositoryImpl
-import com.voicenote.app.domain.model.VoiceRecord
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,8 +34,10 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import android.util.Log
+import java.io.File
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -48,8 +46,7 @@ class RecordingService : Service() {
     @Inject lateinit var audioCapture: AudioCapture
     @Inject lateinit var funASRClient: FunASRClient
     @Inject lateinit var offlineASRClient: OfflineASRClient
-    @Inject lateinit var llmClient: LLMClient
-    @Inject lateinit var offlineLLMClient: OfflineLLMClient
+    @Inject lateinit var asrModelManager: ASRModelManager
     @Inject lateinit var recordRepository: VoiceRecordRepositoryImpl
     @Inject lateinit var audioFileManager: AudioFileManager
 
@@ -63,10 +60,9 @@ class RecordingService : Service() {
 
     private val mutableTranscript = StringBuilder()
     private var currentAsrMode: ASRMode = ASRMode.ONLINE
-    private var currentLlmMode: LLMMode = LLMMode.ONLINE
-    private var currentLlmModelInfo: LLMModelInfo = LLMModelInfo.QWEN2_5_0_5B
     private var currentOfflineModelQuality: ModelQuality = ModelQuality.INT8
-    private val offlinePcmBuffer = mutableListOf<ByteArray>()
+    private var transcriptFilePath: String = ""
+    private var punctReady = false
 
     companion object {
         const val CHANNEL_ID = "recording_channel"
@@ -74,16 +70,18 @@ class RecordingService : Service() {
         const val ACTION_START = "com.voicenote.app.action.START_RECORDING"
         const val ACTION_STOP = "com.voicenote.app.action.STOP_RECORDING"
         const val EXTRA_RECORD_ID = "record_id"
-        const val EXTRA_VISIT_INFO = "visit_info"
         const val EXTRA_ASR_URL = "asr_url"
-        const val EXTRA_LLM_URL = "llm_url"
-        const val EXTRA_LLM_KEY = "llm_key"
-        const val EXTRA_LLM_MODEL = "llm_model"
-        const val EXTRA_LLM_PROMPT = "llm_prompt"
         const val EXTRA_ASR_MODE = "asr_mode"
-        const val EXTRA_LLM_MODE = "llm_mode"
-        const val EXTRA_LLM_MODEL_INFO = "llm_model_info"
         const val EXTRA_OFFLINE_MODEL_QUALITY = "offline_model_quality"
+
+        // Offline ASR strategy:
+        // - Audio capture writes to file independently, never blocked by ASR.
+        // - Model loads in parallel with capture.
+        // - During recording: decode only new audio chunks incrementally.
+        // - Screen shows scrolling recent-text window (last N chars).
+        // - Transcript file appends incrementally; no full-file re-decode needed.
+        private const val DECODE_INTERVAL_MS = 3_000L
+        private const val RECENT_CHAR_WINDOW = 500      // scrolling subtitle window
 
         // Observables for UI binding
         private val _transcriptState = MutableStateFlow("")
@@ -95,43 +93,30 @@ class RecordingService : Service() {
         private val _durationSeconds = MutableStateFlow(0L)
         val durationSeconds: StateFlow<Long> = _durationSeconds.asStateFlow()
 
+        private val _statusMessage = MutableStateFlow("")
+        val statusMessage: StateFlow<String> = _statusMessage.asStateFlow()
+
         private val _asrEvents = MutableSharedFlow<AsrEvent>()
         val asrEvents: SharedFlow<AsrEvent> = _asrEvents.asSharedFlow()
 
         private var durationJob: Job? = null
         private var currentRecordId: Long = 0
-        var currentRecord: VoiceRecord? = null
     }
 
     override fun onCreate() {
         super.onCreate()
-        android.util.Log.e("REC_CRASH", "SVC: onCreate")
         createNotificationChannel()
-        android.util.Log.e("REC_CRASH", "SVC: onCreate done, injected fields: audioCapture=${::audioCapture.isInitialized}, audioFileManager=${::audioFileManager.isInitialized}")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        android.util.Log.e("REC_CRASH", "SVC: onStartCommand, action=${intent?.action}")
         when (intent?.action) {
             ACTION_START -> {
-                android.util.Log.e("REC_CRASH", "SVC: ACTION_START, parsing extras")
                 val recordId = intent.getLongExtra(EXTRA_RECORD_ID, 0)
                 val asrUrl = intent.getStringExtra(EXTRA_ASR_URL) ?: ""
-                val llmUrl = intent.getStringExtra(EXTRA_LLM_URL) ?: ""
-                val llmKey = intent.getStringExtra(EXTRA_LLM_KEY) ?: ""
-                val llmModel = intent.getStringExtra(EXTRA_LLM_MODEL) ?: "gpt-4o-mini"
-                val llmPrompt = intent.getStringExtra(EXTRA_LLM_PROMPT)
                 val asrModeStr = intent.getStringExtra(EXTRA_ASR_MODE) ?: "online"
-                val llmModeStr = intent.getStringExtra(EXTRA_LLM_MODE) ?: "online"
-                val llmModelInfoStr = intent.getStringExtra(EXTRA_LLM_MODEL_INFO) ?: "qwen2_5_0_5b_q4km"
                 val offlineModelQuality = intent.getStringExtra(EXTRA_OFFLINE_MODEL_QUALITY) ?: "int8"
-                android.util.Log.e("REC_CRASH", "SVC: extras parsed — recordId=$recordId, asrMode=$asrModeStr, llmMode=$llmModeStr")
                 val asrMode = ASRMode.fromString(asrModeStr)
-                val llmMode = LLMMode.fromString(llmModeStr)
-                val llmModelInfo = LLMModelInfo.fromString(llmModelInfoStr)
-                android.util.Log.e("REC_CRASH", "SVC: calling startRecording")
-                startRecording(recordId, asrUrl, llmUrl, llmKey, llmModel, llmPrompt, asrMode, llmMode, llmModelInfo, offlineModelQuality)
-                android.util.Log.e("REC_CRASH", "SVC: startRecording returned")
+                startRecording(recordId, asrUrl, asrMode, offlineModelQuality)
             }
             ACTION_STOP -> stopRecording()
         }
@@ -143,65 +128,53 @@ class RecordingService : Service() {
     private fun startRecording(
         recordId: Long,
         asrUrl: String,
-        llmUrl: String,
-        llmKey: String,
-        llmModel: String,
-        llmPrompt: String?,
         asrMode: ASRMode = ASRMode.ONLINE,
-        llmMode: LLMMode = LLMMode.ONLINE,
-        llmModelInfo: LLMModelInfo = LLMModelInfo.QWEN2_5_0_5B,
         offlineModelQualityStr: String = "int8"
     ) {
-        android.util.Log.e("REC_CRASH", "SVC: startRecording entered, asrMode=$asrMode")
         try {
             currentRecordId = recordId
             currentAsrMode = asrMode
-            currentLlmMode = llmMode
-            currentLlmModelInfo = llmModelInfo
             currentOfflineModelQuality = ModelQuality.fromString(offlineModelQualityStr)
             _isRecording.value = true
             _durationSeconds.value = 0
             mutableTranscript.clear()
-            offlinePcmBuffer.clear()
             _transcriptState.value = ""
-            android.util.Log.e("REC_CRASH", "SVC: state vars set, acquiring wake lock")
+            _statusMessage.value = "正在初始化录音服务..."
 
-            // Acquire wake lock to keep CPU awake during recording
+            // Acquire wake lock
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
                 "VoiceNote:RecordingWakeLock"
             ).apply { acquire() }
-            android.util.Log.e("REC_CRASH", "SVC: wake lock acquired, SDK=${Build.VERSION.SDK_INT}")
 
             // Start foreground
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                android.util.Log.e("REC_CRASH", "SVC: calling startForeground with MICROPHONE type")
-                startForeground(NOTIFICATION_ID, buildNotification("录音中..."), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                startForeground(NOTIFICATION_ID, buildNotification("录音中..."),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
             } else {
-                android.util.Log.e("REC_CRASH", "SVC: calling startForeground (pre-Q)")
                 startForeground(NOTIFICATION_ID, buildNotification("录音中..."))
             }
-            android.util.Log.e("REC_CRASH", "SVC: startForeground OK")
 
-            // Initialize audio file recording
-            android.util.Log.e("REC_CRASH", "SVC: starting audio file")
+            // Initialize audio file
             audioFileManager.startNewRecording(recordId, java.time.Instant.now())
-            android.util.Log.e("REC_CRASH", "SVC: audio file started")
 
-            android.util.Log.e("REC_CRASH", "SVC: dispatching ASR mode")
+            // Initialize transcript file for incremental saving
+            val transcriptDir = File(filesDir, "audio/record_$recordId")
+            transcriptDir.mkdirs()
+            val dateStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmm")
+                .withZone(java.time.ZoneId.systemDefault())
+                .format(java.time.Instant.now())
+            transcriptFilePath = File(transcriptDir, "$dateStr.txt").absolutePath
 
             when (asrMode) {
                 ASRMode.ONLINE -> startOnlineASR(asrUrl)
                 ASRMode.OFFLINE -> startOfflineASR()
             }
 
-            android.util.Log.e("REC_CRASH", "SVC: ASR started, launching summary gen")
-            // Launch summary generation (waits for recordingJob to complete)
-            startSummaryGeneration(asrUrl, llmUrl, llmKey, llmModel, llmPrompt)
-            android.util.Log.e("REC_CRASH", "SVC: startRecording complete")
+            // Launch post-recording finalization (waits for recordingJob to complete)
+            startFinalization(asrUrl)
         } catch (e: Exception) {
-            android.util.Log.e("REC_CRASH", "SVC: startRecording FAILED: ${e.message}", e)
             Log.e("RecordingService", "Failed to start recording: ${e.message}", e)
             _isRecording.value = false
             releaseWakeLock()
@@ -210,14 +183,26 @@ class RecordingService : Service() {
     }
 
     private fun startOnlineASR(asrUrl: String) {
-        android.util.Log.e("REC_CRASH", "SVC: startOnlineASR, url=$asrUrl")
+        // Shared flag: recordingJob reads it to know whether to send audio
+        var asrConnected = false
 
+        // ── Audio capture: independent coroutine, never blocked by ASR ──
         recordingJob = serviceScope.launch {
-            var asrConnected = false
+            startDurationCounter()
+            audioCapture.startCapture().collect { audioData ->
+                audioFileManager.writeAudioChunk(audioData)
+                if (asrConnected) {
+                    funASRClient.sendAudio(audioData)
+                }
+            }
+        }
+
+        // ── ASR: sibling coroutine, NOT a child of recordingJob,
+        //     so recordingJob completes immediately when capture stops. ──
+        serviceScope.launch {
             try {
                 val asrFlow = funASRClient.connect(asrUrl)
                 asrConnected = true
-                android.util.Log.e("REC_CRASH", "SVC: online ASR connected")
 
                 launch {
                     asrFlow.collect { event ->
@@ -226,9 +211,11 @@ class RecordingService : Service() {
                             is AsrEvent.Partial -> {
                                 mutableTranscript.append(event.text)
                                 _transcriptState.value = mutableTranscript.toString()
+                                saveTranscriptToFile()
                             }
                             is AsrEvent.Final -> {
                                 _transcriptState.value = mutableTranscript.toString()
+                                saveTranscriptToFile()
                             }
                             is AsrEvent.Error -> {
                                 Log.e("RecordingService", "ASR error: ${event.message}")
@@ -241,64 +228,153 @@ class RecordingService : Service() {
                 kotlinx.coroutines.delay(300)
                 funASRClient.sendHandshake()
             } catch (e: Exception) {
-                android.util.Log.e("REC_CRASH", "SVC: online ASR connect failed: ${e.message}", e)
                 Log.e("RecordingService", "Online ASR unavailable: ${e.message}", e)
             }
-
-            android.util.Log.e("REC_CRASH", "SVC: starting audio capture, asrConnected=$asrConnected")
-            startDurationCounter()
-            audioCapture.startCapture().collect { audioData ->
-                audioFileManager.writeAudioChunk(audioData)
-                if (asrConnected) {
-                    funASRClient.sendAudio(audioData)
-                }
-            }
         }
-        android.util.Log.e("REC_CRASH", "SVC: startOnlineASR done, recordingJob launched")
     }
 
     private fun startOfflineASR() {
-        android.util.Log.e("REC_CRASH", "SVC: startOfflineASR, quality=${currentOfflineModelQuality.name}")
-
-        android.util.Log.e("REC_CRASH", "SVC: launching offline recordingJob")
         recordingJob = serviceScope.launch {
-            // Init recognizer on IO thread — keep heavy JNI model load off main thread
+            // ── Load model + VAD in parallel, does not block audio capture ──
             var asrReady = false
-            try {
-                Log.i("RecordingService", "Starting offline ASR with quality=${currentOfflineModelQuality.name}")
-                android.util.Log.e("REC_CRASH", "SVC: calling ensureRecognizer (on IO thread)")
-                offlineASRClient.ensureRecognizer(currentOfflineModelQuality)
-                asrReady = true
-                Log.i("RecordingService", "Offline ASR recognizer ready")
-                android.util.Log.e("REC_CRASH", "SVC: ensureRecognizer OK")
-            } catch (e: Exception) {
-                android.util.Log.e("REC_CRASH", "SVC: ensureRecognizer FAILED: ${e.message}", e)
-                Log.e("RecordingService", "Offline ASR init failed: ${e.message}", e)
+            var vadActive = false
+            launch {
+                _statusMessage.value = "正在加载离线模型..."
+                try {
+                    offlineASRClient.ensureRecognizer(currentOfflineModelQuality)
+                    asrReady = true
+                    Log.i("RecordingService", "Offline ASR recognizer ready")
+                    // Init VAD — bundled in APK assets, copy to storage if needed
+                    asrModelManager.ensureVadModelAvailable()
+                    vadActive = offlineASRClient.ensureVad()
+                    if (!vadActive) {
+                        // Fallback: try download (assets copy may have failed on some devices)
+                        Log.i("RecordingService", "VAD model not available from assets, attempting download...")
+                        try {
+                            asrModelManager.downloadVadModel().getOrThrow()
+                            vadActive = offlineASRClient.ensureVad()
+                        } catch (e: Exception) {
+                            Log.w("RecordingService", "VAD model download failed: ${e.message}")
+                        }
+                    }
+                    if (vadActive) {
+                        Log.i("RecordingService", "VAD ready, silence will be filtered")
+                    } else {
+                        Log.w("RecordingService", "VAD unavailable, will decode all audio")
+                    }
+                    // Init punctuation model (post-processing, no impact on recording)
+                    punctReady = offlineASRClient.ensurePunctuation()
+                    if (!punctReady) {
+                        Log.i("RecordingService", "Punctuation model missing, attempting download...")
+                        try {
+                            asrModelManager.downloadPunctuationModel().getOrThrow()
+                            punctReady = offlineASRClient.ensurePunctuation()
+                        } catch (e: Exception) {
+                            Log.w("RecordingService", "Punctuation model download failed: ${e.message}")
+                        }
+                    }
+                    if (punctReady) {
+                        Log.i("RecordingService", "Punctuation model ready")
+                    }
+
+                    _statusMessage.value = if (vadActive) {
+                        "VAD 已就绪，正在监听..."
+                    } else {
+                        "模型已就绪，正在转写..."
+                    }
+                } catch (e: Exception) {
+                    Log.e("RecordingService", "Offline ASR init failed: ${e.message}", e)
+                }
             }
 
             try {
-                android.util.Log.e("REC_CRASH", "SVC: offline recordingJob started, asrReady=$asrReady")
-                var chunkStart = 0L
-                val chunkIntervalMs = 30_000L
+                val pendingChunks = mutableListOf<ByteArray>()
+                var lastDecodeTime = 0L
 
-                android.util.Log.e("REC_CRASH", "SVC: offline calling audioCapture.startCapture()")
                 startDurationCounter()
                 audioCapture.startCapture().collect { audioData ->
                     audioFileManager.writeAudioChunk(audioData)
 
                     if (asrReady) {
-                        offlinePcmBuffer.add(audioData)
-                        val elapsed = _durationSeconds.value * 1000
-                        if (elapsed - chunkStart >= chunkIntervalMs) {
-                            chunkStart = elapsed
-                            val merged = concatenateChunks(offlinePcmBuffer)
-                            offlinePcmBuffer.clear()
+                        if (vadActive) {
+                            // ── VAD path: feed audio to VAD, decode only speech segments ──
+                            offlineASRClient.vadAcceptPCM(audioData)
 
-                            val result = offlineASRClient.processPCMChunk(merged)
-                            result.onSuccess { text ->
-                                mutableTranscript.append(text)
-                                _transcriptState.value = mutableTranscript.toString()
+                            val elapsed = _durationSeconds.value * 1000
+                            if (elapsed - lastDecodeTime >= DECODE_INTERVAL_MS) {
+                                lastDecodeTime = elapsed
+                                val segments = offlineASRClient.vadDecodeSpeechSegments()
+                                for (text in segments) {
+                                    mutableTranscript.append(text)
+                                }
+                                if (segments.isNotEmpty()) {
+                                    saveTranscriptToFile()
+                                    val full = mutableTranscript.toString()
+                                    _transcriptState.value = full.takeLast(RECENT_CHAR_WINDOW)
+                                    _statusMessage.value = "正在转写... ${formatDuration(_durationSeconds.value)}"
+                                } else {
+                                    _statusMessage.value = "静音中... ${formatDuration(_durationSeconds.value)}"
+                                }
                             }
+                        } else {
+                            // ── Fallback: no VAD, decode raw chunks incrementally ──
+                            pendingChunks.add(audioData)
+
+                            val elapsed = _durationSeconds.value * 1000
+                            if (elapsed - lastDecodeTime >= DECODE_INTERVAL_MS) {
+                                lastDecodeTime = elapsed
+                                if (pendingChunks.isNotEmpty()) {
+                                    val newAudio = concatenateChunks(pendingChunks)
+                                    pendingChunks.clear()
+
+                                    val result = offlineASRClient.processPCMChunk(newAudio)
+                                    result.onSuccess { text ->
+                                        if (text.isNotBlank()) {
+                                            mutableTranscript.append(text)
+                                            saveTranscriptToFile()
+                                            val full = mutableTranscript.toString()
+                                            _transcriptState.value = full.takeLast(RECENT_CHAR_WINDOW)
+                                            _statusMessage.value = "正在转写... ${formatDuration(_durationSeconds.value)}"
+                                        }
+                                    }.onFailure { e ->
+                                        Log.w("RecordingService", "Offline decode failed: ${e.message}")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Drain remaining after capture stops
+                if (asrReady) {
+                    if (vadActive) {
+                        // Flush in-progress speech: feed silence to force VAD
+                        // to complete any partial segment before draining.
+                        offlineASRClient.vadFlush()
+                        val segments = offlineASRClient.vadDecodeSpeechSegments()
+                        for (text in segments) {
+                            mutableTranscript.append(text)
+                        }
+                        if (segments.isNotEmpty()) {
+                            saveTranscriptToFile()
+                            val full = mutableTranscript.toString()
+                            _transcriptState.value = full.takeLast(RECENT_CHAR_WINDOW)
+                        }
+                    } else if (pendingChunks.isNotEmpty()) {
+                        try {
+                            val finalAudio = concatenateChunks(pendingChunks)
+                            pendingChunks.clear()
+                            val result = offlineASRClient.processPCMChunk(finalAudio)
+                            result.onSuccess { text ->
+                                if (text.isNotBlank()) {
+                                    mutableTranscript.append(text)
+                                    saveTranscriptToFile()
+                                    val full = mutableTranscript.toString()
+                                    _transcriptState.value = full.takeLast(RECENT_CHAR_WINDOW)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w("RecordingService", "Final pending decode failed: ${e.message}")
                         }
                     }
                 }
@@ -307,6 +383,7 @@ class RecordingService : Service() {
             }
         }
     }
+
 
     private fun concatenateChunks(chunks: List<ByteArray>): ByteArray {
         val totalSize = chunks.sumOf { it.size }
@@ -319,84 +396,71 @@ class RecordingService : Service() {
         return result
     }
 
-    private fun startSummaryGeneration(
-        asrUrl: String, llmUrl: String, llmKey: String, llmModel: String, llmPrompt: String?
-    ) {
+    private fun startFinalization(asrUrl: String) {
         serviceScope.launch {
             recordingJob?.join()
 
-            // Step 1: Process remaining PCM buffer, then unload ASR model
+            val audioFilePath = audioFileManager.finalizeRecording()
+            recordRepository.updateAudioFilePath(
+                currentRecordId, audioFilePath,
+                actualStopTime ?: java.time.Instant.now()
+            )
+
+            val transcript = mutableTranscript.toString()
+            val fallbackText = "服务暂时不可用，请采用离线方式"
+            var finalTranscript: String
+
+            Log.i("RecordingService", "Finalizing: transcript.length=${transcript.length}, asrMode=$currentAsrMode, punctReady=$punctReady")
+
+            finalTranscript = transcript
+
+            // Online retry fallback
+            if (finalTranscript.isBlank() && currentAsrMode == ASRMode.ONLINE && asrUrl.isNotBlank()) {
+                recordRepository.updateTranscriptStatus(
+                    currentRecordId,
+                    com.voicenote.app.domain.model.ProcessingStatus.PROCESSING
+                )
+                val retryResult = retryAsrWithBackoff(audioFilePath, asrUrl)
+                finalTranscript = retryResult.getOrDefault(fallbackText)
+            } else if (finalTranscript.isBlank() && currentAsrMode == ASRMode.OFFLINE) {
+                finalTranscript = "离线转写未完成，请检查模型是否正确安装"
+            } else if (finalTranscript.isBlank()) {
+                finalTranscript = fallbackText
+            }
+
+            // Apply offline punctuation BEFORE reset (reset destroys punctuation model)
+            if (punctReady && finalTranscript.isNotBlank()
+                && finalTranscript != fallbackText
+                && finalTranscript != "离线转写未完成，请检查模型是否正确安装"
+            ) {
+                Log.i("RecordingService", "Applying punctuation to transcript (${finalTranscript.length} chars)")
+                _statusMessage.value = "正在添加标点..."
+                finalTranscript = offlineASRClient.addPunctuation(finalTranscript)
+                Log.i("RecordingService", "Punctuation applied: result length=${finalTranscript.length}")
+            } else {
+                Log.i("RecordingService", "Punctuation skipped: punctReady=$punctReady, textBlank=${finalTranscript.isBlank()}")
+            }
+
+            // Release ASR resources AFTER punctuation is applied
             if (currentAsrMode == ASRMode.OFFLINE) {
-                if (offlinePcmBuffer.isNotEmpty()) {
-                    Log.i("RecordingService", "Pipeline: processing remaining PCM buffer (${offlinePcmBuffer.size} chunks)")
-                    val merged = concatenateChunks(offlinePcmBuffer)
-                    offlinePcmBuffer.clear()
-                    val result = offlineASRClient.processPCMChunk(merged)
-                    result.onSuccess { text ->
-                        mutableTranscript.append(text)
-                        _transcriptState.value = mutableTranscript.toString()
-                    }
-                }
                 if (offlineASRClient.isAvailable) {
-                    Log.i("RecordingService", "Pipeline: unloading ASR model before summary")
                     offlineASRClient.reset()
                 }
             }
 
-            val audioFilePath = audioFileManager.finalizeRecording()
-            recordRepository.updateAudioFilePath(currentRecordId, audioFilePath, actualStopTime ?: java.time.Instant.now())
+            _transcriptState.value = finalTranscript
+            saveTranscriptToFile()
 
-            var transcript = mutableTranscript.toString()
-            val fallbackText = "服务暂时不可用，请采用离线方式"
-
-            Log.i("RecordingService", "startSummaryGeneration: transcript.length=${transcript.length}, asrMode=$currentAsrMode, audioFilePath=$audioFilePath")
-
-            if (transcript.isBlank() && audioFilePath.isNotBlank() && currentAsrMode == ASRMode.ONLINE && asrUrl.isNotBlank()) {
-                recordRepository.updateTranscriptStatus(currentRecordId, com.voicenote.app.domain.model.ProcessingStatus.PROCESSING)
-                val retryResult = retryAsrWithBackoff(audioFilePath, asrUrl)
-                transcript = retryResult.getOrDefault(fallbackText)
-            } else if (transcript.isBlank() && currentAsrMode == ASRMode.OFFLINE) {
-                transcript = "离线转写未完成，请检查模型是否正确安装"
-            } else if (transcript.isBlank()) {
-                transcript = fallbackText
-            }
-
-            val transcriptFilePath = audioFileManager.finalizeTranscript(transcript)
-            recordRepository.updateTranscriptWithFile(currentRecordId, transcript, transcriptFilePath)
+            recordRepository.updateTranscriptWithFile(
+                currentRecordId, finalTranscript, transcriptFilePath
+            )
             recordRepository.updateTranscriptStatus(
                 currentRecordId,
-                if (transcript.isBlank() || transcript == fallbackText || transcript == "离线转写未完成，请检查模型是否正确安装") com.voicenote.app.domain.model.ProcessingStatus.UNAVAILABLE
+                if (finalTranscript.isBlank() || finalTranscript == fallbackText ||
+                    finalTranscript == "离线转写未完成，请检查模型是否正确安装"
+                ) com.voicenote.app.domain.model.ProcessingStatus.UNAVAILABLE
                 else com.voicenote.app.domain.model.ProcessingStatus.COMPLETED
             )
-
-            if (transcript != fallbackText) {
-                when (currentLlmMode) {
-                    LLMMode.OFFLINE -> {
-                        recordRepository.updateSummaryStatus(currentRecordId, com.voicenote.app.domain.model.ProcessingStatus.PROCESSING)
-                        val summaryResult = offlineLLMClient.generateSummary(transcript, currentLlmModelInfo, llmPrompt)
-                        summaryResult.onSuccess { summary ->
-                            recordRepository.updateSummary(currentRecordId, summary)
-                        }
-                        if (summaryResult.isFailure) {
-                            recordRepository.updateSummaryStatus(currentRecordId, com.voicenote.app.domain.model.ProcessingStatus.UNAVAILABLE)
-                        }
-                    }
-                    LLMMode.ONLINE -> {
-                        if (llmUrl.isNotBlank() && llmKey.isNotBlank()) {
-                            recordRepository.updateSummaryStatus(currentRecordId, com.voicenote.app.domain.model.ProcessingStatus.PROCESSING)
-                            val summaryResult = retryLlmWithBackoff(transcript, llmUrl, llmKey, llmModel, llmPrompt)
-                            summaryResult.onSuccess { summary ->
-                                recordRepository.updateSummary(currentRecordId, summary)
-                            }
-                            if (summaryResult.isFailure) {
-                                recordRepository.updateSummaryStatus(currentRecordId, com.voicenote.app.domain.model.ProcessingStatus.UNAVAILABLE)
-                            }
-                        } else {
-                            recordRepository.updateSummaryStatus(currentRecordId, com.voicenote.app.domain.model.ProcessingStatus.UNAVAILABLE)
-                        }
-                    }
-                }
-            }
 
             _isRecording.value = false
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -413,19 +477,17 @@ class RecordingService : Service() {
         when (currentAsrMode) {
             ASRMode.ONLINE -> {
                 funASRClient.sendEnd()
-                serviceScope.launch {
-                    kotlinx.coroutines.delay(3000)
-                    funASRClient.disconnect()
-                    recordingJob?.cancel()
-                }
+                // disconnect + final-result wait is handled in startFinalization
             }
             ASRMode.OFFLINE -> {
-                recordingJob?.cancel()
+                // Flow ends naturally when audioCapture stops.
+                // Cancelling here would truncate the WAV file.
             }
         }
 
         _isRecording.value = false
-        updateNotification("录音已结束，正在生成总结...")
+        _statusMessage.value = "录音已结束，正在保存..."
+        updateNotification("录音已结束，正在保存...")
     }
 
     private suspend fun startDurationCounter() {
@@ -433,7 +495,7 @@ class RecordingService : Service() {
         _durationSeconds.value = 0
         var batteryWarned = false
         durationJob = serviceScope.launch {
-            while (true) {
+            while (isActive) {
                 kotlinx.coroutines.delay(1000)
                 _durationSeconds.value += 1
                 if (!batteryWarned && _durationSeconds.value >= 3600L) {
@@ -444,10 +506,26 @@ class RecordingService : Service() {
         }
     }
 
+    private fun saveTranscriptToFile() {
+        try {
+            if (transcriptFilePath.isNotBlank()) {
+                File(transcriptFilePath).writeText(mutableTranscript.toString())
+            }
+        } catch (e: Exception) {
+            Log.e("RecordingService", "Failed to save transcript file: ${e.message}")
+        }
+    }
+
+    private fun formatDuration(seconds: Long): String {
+        val h = seconds / 3600
+        val m = (seconds % 3600) / 60
+        val s = seconds % 60
+        return if (h > 0) "%02d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
+    }
+
     private fun buildNotification(text: String): Notification {
         val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
+            this, 0,
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
@@ -507,40 +585,6 @@ class RecordingService : Service() {
         }
 
         return Result.failure(lastError ?: Exception("All ASR retries exhausted"))
-    }
-
-    private suspend fun retryLlmWithBackoff(
-        transcript: String,
-        llmUrl: String,
-        llmKey: String,
-        llmModel: String,
-        llmPrompt: String?
-    ): Result<com.voicenote.app.domain.model.VoiceRecordSummary> {
-        val delays = listOf(20_000L, 40_000L, 80_000L, 160_000L, 320_000L)
-        var lastError: Throwable? = null
-
-        for ((index, delay) in delays.withIndex()) {
-            if (index > 0) {
-                Log.i("RecordingService", "LLM retry ${index + 1}/${delays.size} after ${delay}ms")
-                kotlinx.coroutines.delay(delay)
-            }
-
-            val result = llmClient.generateSummary(
-                transcript = transcript,
-                apiUrl = llmUrl,
-                apiKey = llmKey,
-                model = llmModel,
-                customPrompt = llmPrompt
-            )
-            if (result.isSuccess) {
-                Log.i("RecordingService", "LLM retry ${index + 1} succeeded")
-                return result
-            }
-            lastError = result.exceptionOrNull()
-            Log.w("RecordingService", "LLM retry ${index + 1}/${delays.size} failed: ${lastError?.message}")
-        }
-
-        return Result.failure(lastError ?: Exception("All LLM retries exhausted"))
     }
 
     private fun releaseWakeLock() {

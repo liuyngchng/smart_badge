@@ -1,11 +1,8 @@
 package com.voicenote.app.ui.recording
 
 import android.app.Application
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
-import android.os.IBinder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.voicenote.app.core.di.SettingsDataStore
@@ -33,6 +30,7 @@ data class RecordingUiState(
     val currentRecordId: Long = 0,
     val isStarting: Boolean = false,
     val isStopping: Boolean = false,
+    val statusMessage: String = "",
     val error: String? = null
 )
 
@@ -55,10 +53,8 @@ class RecordingViewModel @Inject constructor(
         val state = _uiState.value
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isStarting = true, error = null)
-            android.util.Log.e("REC_CRASH", "VM: startRecording entered")
 
             val settings = settingsDataStore.settingsFlow.first()
-            android.util.Log.e("REC_CRASH", "VM: settings loaded, asrMode=${settings.asrMode}, llmMode=${settings.llmMode}")
 
             val title = state.title.trim().ifBlank {
                 "新录音 ${dateFormatter.format(java.time.Instant.now())}"
@@ -75,7 +71,6 @@ class RecordingViewModel @Inject constructor(
             )
 
             val recordId = recordRepository.createRecord(record)
-            android.util.Log.e("REC_CRASH", "VM: record created, id=$recordId")
             _uiState.value = _uiState.value.copy(
                 currentRecordId = recordId,
                 isRecording = true,
@@ -83,34 +78,21 @@ class RecordingViewModel @Inject constructor(
             )
 
             startRecordingService(recordId, settings)
-            android.util.Log.e("REC_CRASH", "VM: startRecordingService returned")
         }
     }
 
     private fun startRecordingService(recordId: Long, settings: com.voicenote.app.core.di.AppSettings) {
-        android.util.Log.e("REC_CRASH", "VM: startRecordingService entered, recordId=$recordId")
         val context = getApplication<Application>()
         val intent = Intent(context, RecordingService::class.java).apply {
             action = RecordingService.ACTION_START
             putExtra(RecordingService.EXTRA_RECORD_ID, recordId)
             putExtra(RecordingService.EXTRA_ASR_URL, settings.asrUrl)
-            putExtra(RecordingService.EXTRA_LLM_URL, settings.llmUrl)
-            putExtra(RecordingService.EXTRA_LLM_KEY, settings.llmKey)
-            putExtra(RecordingService.EXTRA_LLM_MODEL, settings.llmModel)
             putExtra(RecordingService.EXTRA_ASR_MODE, settings.asrMode)
-            putExtra(RecordingService.EXTRA_LLM_MODE, settings.llmMode)
-            putExtra(RecordingService.EXTRA_LLM_MODEL_INFO, settings.llmModelInfo)
             putExtra(RecordingService.EXTRA_OFFLINE_MODEL_QUALITY, settings.offlineModelQuality)
-            if (settings.llmPrompt.isNotBlank()) {
-                putExtra(RecordingService.EXTRA_LLM_PROMPT, settings.llmPrompt)
-            }
         }
-        android.util.Log.e("REC_CRASH", "VM: calling startForegroundService")
         try {
             context.startForegroundService(intent)
-            android.util.Log.e("REC_CRASH", "VM: startForegroundService OK, observing service state")
         } catch (e: Exception) {
-            android.util.Log.e("REC_CRASH", "VM: startForegroundService FAILED: ${e.message}", e)
             _uiState.value = _uiState.value.copy(
                 isRecording = false,
                 isStarting = false,
@@ -136,6 +118,11 @@ class RecordingViewModel @Inject constructor(
                 if (!recording) {
                     _uiState.value = _uiState.value.copy(isStopping = false)
                 }
+            }
+        }
+        viewModelScope.launch {
+            RecordingService.statusMessage.collect { msg ->
+                _uiState.value = _uiState.value.copy(statusMessage = msg)
             }
         }
     }

@@ -7,7 +7,6 @@ import dagger.hilt.components.SingletonComponent
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
-    // OkHttpClient instances are created within FunASRClient and LLMClient
+    // OkHttpClient instances are created within FunASRClient
     // as they require different timeout configurations.
-    // A shared singleton can be extracted here later if needed.
 }

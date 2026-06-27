@@ -20,8 +20,6 @@ data class VoiceRecord(
     val endTime: Instant? = null,
     val transcriptText: String = "",
     val transcriptStatus: ProcessingStatus = ProcessingStatus.PENDING,
-    val summary: VoiceRecordSummary? = null,
-    val summaryStatus: ProcessingStatus = ProcessingStatus.PENDING,
     val audioFilePath: String = "",
     val transcriptFilePath: String = "",
     val createdAt: Instant = Instant.now()
