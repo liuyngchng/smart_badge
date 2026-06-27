@@ -325,8 +325,13 @@ class OfflineASRClient @Inject constructor(
         }
         val modelFile = File(asrModelManager.modelFilePath(quality))
         val tokensFile = File(asrModelManager.tokensFilePath())
-        _modelStatus.value = if (modelFile.exists() && tokensFile.exists()) ModelStatus.READY
-            else ModelStatus.MISSING
+        if (modelFile.exists() && tokensFile.exists()) {
+            // Files exist but model not loaded — trigger the full preload pipeline
+            // (LOADING → ensureRecognizer → READY/ERROR) so the UI shows progress.
+            preloadIfAvailable(quality)
+        } else {
+            _modelStatus.value = ModelStatus.MISSING
+        }
     }
 
     private fun handleMemoryWarning(level: Int) {

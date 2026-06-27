@@ -38,14 +38,9 @@ class VoiceRecordRepositoryImpl @Inject constructor(
         voiceRecordDao.update(VoiceRecordEntity.fromDomain(record))
     }
 
-    override suspend fun updateTranscript(id: Long, text: String) {
+    override suspend fun updateTranscriptWithFile(id: Long, transcriptFilePath: String) {
         val entity = voiceRecordDao.getById(id) ?: return
-        voiceRecordDao.update(entity.copy(transcriptText = text))
-    }
-
-    override suspend fun updateTranscriptWithFile(id: Long, text: String, transcriptFilePath: String) {
-        val entity = voiceRecordDao.getById(id) ?: return
-        voiceRecordDao.update(entity.copy(transcriptText = text, transcriptFilePath = transcriptFilePath))
+        voiceRecordDao.update(entity.copy(transcriptFilePath = transcriptFilePath))
     }
 
     override suspend fun updateTranscriptStatus(id: Long, status: com.voicenote.app.domain.model.ProcessingStatus) {

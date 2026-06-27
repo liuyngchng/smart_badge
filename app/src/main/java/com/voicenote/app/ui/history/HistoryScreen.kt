@@ -297,7 +297,7 @@ private fun RecordCard(record: VoiceRecord, onClick: () -> Unit) {
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    if (record.transcriptText.isNotBlank()) {
+                    if (record.transcriptStatus == com.voicenote.app.domain.model.ProcessingStatus.COMPLETED) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Icon(
                             Icons.Default.CheckCircle,
@@ -344,17 +344,15 @@ private fun RecordCard(record: VoiceRecord, onClick: () -> Unit) {
                         )
                     }
                 }
-                // Transcript preview
-                if (record.transcriptText.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            record.transcriptText.take(100),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                // Transcript status indicator
+                if (record.transcriptStatus == com.voicenote.app.domain.model.ProcessingStatus.COMPLETED) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "已转写 · 点击查看",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                    )
+                }
             }
         }
     }

@@ -43,6 +43,19 @@ class HomeViewModel @Inject constructor(
         preloadModel()
     }
 
+    /**
+     * Refresh model status based on current settings.
+     * Called when HomeScreen (re)enters composition to pick up
+     * changes made on other screens (e.g. uploading a model in Settings).
+     */
+    fun refreshModelStatus() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val settings = settingsDataStore.settingsFlow.first()
+            val quality = ModelQuality.fromString(settings.offlineModelQuality)
+            offlineASRClient.refreshModelStatus(quality)
+        }
+    }
+
     fun loadData() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)

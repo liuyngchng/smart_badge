@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -111,7 +112,7 @@ class AudioImporter @Inject constructor(
             ""
         }
 
-        recordRepository.updateTranscriptWithFile(recordId, transcript, transcriptFilePath)
+        recordRepository.updateTranscriptWithFile(recordId, transcriptFilePath)
         recordRepository.updateTranscriptStatus(
             recordId,
             if (transcript == FALLBACK_TEXT) com.voicenote.app.domain.model.ProcessingStatus.UNAVAILABLE
@@ -126,13 +127,55 @@ class AudioImporter @Inject constructor(
             val quality = ModelQuality.fromString(settings.offlineModelQuality)
             offlineASRClient.ensureRecognizer(quality)
             val file = File(audioFilePath)
-            val pcmData = file.inputStream().use { input ->
-                input.skip(44)
-                input.readBytes()
+            if (!file.exists()) return FALLBACK_TEXT
+
+            // Chunked reading to avoid OOM on large files (e.g. 12h recordings)
+            RandomAccessFile(file, "r").use { raf ->
+                // Skip WAV header to find PCM data
+                if (raf.length() < 44) return FALLBACK_TEXT
+                raf.skipBytes(12) // RIFF + size + WAVE
+                val chunkHeader = ByteArray(8)
+                var dataOffset = 44L
+                var dataSize = raf.length() - 44
+                while (raf.filePointer + 8 <= raf.length()) {
+                    raf.readFully(chunkHeader)
+                    val chunkId = String(chunkHeader, 0, 4)
+                    val chunkLen = ((chunkHeader[4].toInt() and 0xFF).toLong() or
+                        ((chunkHeader[5].toInt() and 0xFF).toLong() shl 8) or
+                        ((chunkHeader[6].toInt() and 0xFF).toLong() shl 16) or
+                        ((chunkHeader[7].toInt() and 0xFF).toLong() shl 24))
+                    if (chunkId == "data") {
+                        dataOffset = raf.filePointer
+                        dataSize = chunkLen
+                        break
+                    }
+                    raf.seek(raf.filePointer + chunkLen)
+                }
+
+                // Process in 30-second chunks
+                val bytesPerSec = 32000L  // 16000 Hz * 2 bytes
+                val chunkSize = (30 * bytesPerSec).toInt()
+                var bytesProcessed = 0L
+                val results = StringBuilder()
+
+                raf.seek(dataOffset)
+                val buffer = ByteArray(chunkSize)
+                while (bytesProcessed < dataSize) {
+                    val remaining = (dataSize - bytesProcessed).toInt()
+                    val toRead = minOf(chunkSize, remaining)
+                    raf.readFully(buffer, 0, toRead)
+                    val chunkData = if (toRead == chunkSize) buffer else buffer.copyOf(toRead)
+                    val result = offlineASRClient.processPCMChunk(chunkData)
+                    result.onSuccess { text ->
+                        if (text.isNotBlank()) results.append(text)
+                    }
+                    bytesProcessed += toRead
+                }
+
+                offlineASRClient.reset()
+                val text = results.toString().trim()
+                if (text.isBlank()) FALLBACK_TEXT else text
             }
-            val result = offlineASRClient.processPCMChunk(pcmData)
-            offlineASRClient.reset()
-            result.getOrDefault(FALLBACK_TEXT)
         } catch (e: Exception) {
             Log.e(TAG, "离线 ASR 失败: ${e.message}", e)
             FALLBACK_TEXT

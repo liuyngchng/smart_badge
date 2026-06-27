@@ -39,6 +39,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -63,6 +64,12 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // Refresh model status each time the screen enters composition,
+    // picking up changes made on other screens (e.g. model upload in Settings).
+    LaunchedEffect(Unit) {
+        viewModel.refreshModelStatus()
+    }
 
     Scaffold(
         topBar = {
@@ -141,8 +148,11 @@ fun HomeScreen(
                         ModelStatus.UNKNOWN, ModelStatus.LOADING -> {
                             ModelLoadingBanner()
                         }
-                        ModelStatus.MISSING, ModelStatus.ERROR -> {
+                        ModelStatus.MISSING -> {
                             ModelMissingBanner(onGoToSettings = onSettingsClick)
+                        }
+                        ModelStatus.ERROR -> {
+                            ModelErrorBanner(onGoToSettings = onSettingsClick)
                         }
                         ModelStatus.READY -> { /* no banner needed */ }
                     }
@@ -264,6 +274,52 @@ private fun ModelMissingBanner(onGoToSettings: () -> Unit) {
                 )
                 Text(
                     "请先下载语音识别模型才能开始录音",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                )
+            }
+            TextButton(onClick = onGoToSettings) {
+                Icon(
+                    Icons.Default.Download,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("前往设置")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModelErrorBanner(onGoToSettings: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Error,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "模型加载失败",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+                Text(
+                    "模型文件可能已损坏，请重新下载或上传",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
                 )

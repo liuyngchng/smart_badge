@@ -3,6 +3,9 @@ package com.voicenote.app.ui.recording
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.voicenote.app.core.di.SettingsDataStore
@@ -31,7 +34,9 @@ data class RecordingUiState(
     val isStarting: Boolean = false,
     val isStopping: Boolean = false,
     val statusMessage: String = "",
-    val error: String? = null
+    val error: String? = null,
+    val showBatteryOptDialog: Boolean = false,
+    val batteryOptimizationDisabled: Boolean = false
 )
 
 @HiltViewModel
@@ -132,6 +137,29 @@ class RecordingViewModel @Inject constructor(
             action = RecordingService.ACTION_STOP
         }
         context.startService(intent)
+    }
+
+    fun checkBatteryOptimization() {
+        val context = getApplication<Application>()
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        val isIgnoring = powerManager.isIgnoringBatteryOptimizations(context.packageName)
+        _uiState.value = _uiState.value.copy(
+            batteryOptimizationDisabled = isIgnoring,
+            showBatteryOptDialog = !isIgnoring
+        )
+    }
+
+    fun dismissBatteryOptDialog() {
+        _uiState.value = _uiState.value.copy(showBatteryOptDialog = false)
+    }
+
+    fun openBatteryOptimizationSettings() {
+        val context = getApplication<Application>()
+        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+            data = Uri.parse("package:${context.packageName}")
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
     }
 
     companion object {

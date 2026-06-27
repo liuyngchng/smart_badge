@@ -11,8 +11,7 @@ interface VoiceRecordRepository {
     fun getRecordByIdFlow(id: Long): Flow<VoiceRecord?>
     suspend fun createRecord(record: VoiceRecord): Long
     suspend fun updateRecord(record: VoiceRecord)
-    suspend fun updateTranscript(id: Long, text: String)
-    suspend fun updateTranscriptWithFile(id: Long, text: String, transcriptFilePath: String)
+    suspend fun updateTranscriptWithFile(id: Long, transcriptFilePath: String)
     suspend fun updateTranscriptStatus(id: Long, status: com.voicenote.app.domain.model.ProcessingStatus)
     suspend fun updateStartTime(id: Long, startTime: java.time.Instant)
     suspend fun updateAudioFilePath(id: Long, path: String, endTime: java.time.Instant)

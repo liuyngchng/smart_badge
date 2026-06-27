@@ -8,6 +8,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -28,14 +31,26 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import android.util.Log
+import com.google.gson.Gson
 import java.io.File
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class RecordingService : Service() {
+
+    private data class RecordingCheckpoint(
+        val recordId: Long,
+        val startTime: Long,
+        val lastTranscriptLength: Int,
+        val pcmBytesWritten: Long,
+        val sampleRate: Int = 16000,
+        val channels: Int = 1,
+        val bitsPerSample: Int = 16
+    )
 
     @Inject lateinit var audioCapture: AudioCapture
     @Inject lateinit var offlineASRClient: OfflineASRClient
@@ -45,18 +60,24 @@ class RecordingService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO +
         kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
-            Log.e("RecordingService", "Unhandled coroutine exception: ${e.message}", e)
+            Log.e(TAG, "Unhandled coroutine exception: ${e.message}", e)
         })
     private var recordingJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var actualStopTime: java.time.Instant? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
 
     private val mutableTranscript = StringBuilder()
     private var currentOfflineModelQuality: ModelQuality = ModelQuality.INT8
     private var transcriptFilePath: String = ""
     private var punctReady = false
+    private var wakeLockStartTime = 0L
+    private var diskCheckJob: Job? = null
+    private var checkpointJob: Job? = null
+    private val gson = Gson()
 
     companion object {
+        private const val TAG = "RecordingService"
         const val CHANNEL_ID = "recording_channel"
         const val NOTIFICATION_ID = 1
         const val ACTION_START = "com.voicenote.app.action.START_RECORDING"
@@ -72,6 +93,14 @@ class RecordingService : Service() {
         // - Transcript file appends incrementally; no full-file re-decode needed.
         private const val DECODE_INTERVAL_MS = 3_000L
         private const val RECENT_CHAR_WINDOW = 500      // scrolling subtitle window
+
+        // Long-recording optimization
+        private const val DISK_CHECK_INTERVAL_MS = 300_000L   // 5 minutes
+        private const val MIN_FREE_SPACE_BYTES = 500L * 1024 * 1024  // 500 MB
+        private const val MAX_TRANSCRIPT_CHARS = 1_000_000   // 1M char cap
+        private const val PUNCTUATION_CHUNK_SIZE = 5000      // chars per punctuation batch
+        private const val CHECKPOINT_INTERVAL_MS = 120_000L  // 2 minutes
+        private const val BATTERY_WARNING_SECONDS = 3600L    // 1 hour
 
         // Observables for UI binding
         private val _transcriptState = MutableStateFlow("")
@@ -98,13 +127,19 @@ class RecordingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
+                // Guard: prevent duplicate recording
+                if (_isRecording.value) {
+                    Log.w(TAG, "Ignoring duplicate START request — already recording")
+                    return START_REDELIVER_INTENT
+                }
                 val recordId = intent.getLongExtra(EXTRA_RECORD_ID, 0)
                 val offlineModelQuality = intent.getStringExtra(EXTRA_OFFLINE_MODEL_QUALITY) ?: "int8"
                 startRecording(recordId, offlineModelQuality)
             }
             ACTION_STOP -> stopRecording()
         }
-        return START_NOT_STICKY
+        // Restart with last intent if killed — enables crash recovery
+        return START_REDELIVER_INTENT
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -122,12 +157,16 @@ class RecordingService : Service() {
             _transcriptState.value = ""
             _statusMessage.value = "正在初始化录音服务..."
 
-            // Acquire wake lock
+            // Acquire wake lock — held for entire recording to prevent CPU sleep
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
                 "VoiceNote:RecordingWakeLock"
             ).apply { acquire() }
+            wakeLockStartTime = System.currentTimeMillis()
+
+            // Request audio focus — auto-stop on incoming call
+            requestAudioFocus()
 
             // Start foreground
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -137,23 +176,59 @@ class RecordingService : Service() {
                 startForeground(NOTIFICATION_ID, buildNotification("录音中..."))
             }
 
-            // Initialize audio file
-            audioFileManager.startNewRecording(recordId, java.time.Instant.now())
+            // Initialize audio file — detect and resume incomplete recording
+            val existingWavPath = audioFileManager.getCurrentFilePath()
+            val resumed = if (existingWavPath.isNotBlank()) {
+                // Service was killed and restarted — attempt to resume
+                Log.i(TAG, "Attempting to resume: $existingWavPath")
+                audioFileManager.resumeRecording(recordId, existingWavPath)
+            } else {
+                // Check for orphaned checkpoint from a previous crash
+                val checkpointFile = File(filesDir, "checkpoints/record_${recordId}.json")
+                if (checkpointFile.exists()) {
+                    val checkpoint = gson.fromJson(checkpointFile.readText(), RecordingCheckpoint::class.java)
+                    // Try to find the existing WAV file
+                    val audioDir = File(filesDir, "audio/record_$recordId")
+                    val wavFiles = audioDir.listFiles { f -> f.extension == "wav" }
+                    if (wavFiles != null && wavFiles.isNotEmpty()) {
+                        Log.i(TAG, "Recovering from orphaned checkpoint: ${wavFiles[0].absolutePath}")
+                        _statusMessage.value = "正在恢复上次录音..."
+                        audioFileManager.resumeRecording(recordId, wavFiles[0].absolutePath)
+                    } else false
+                } else false
+            }
+
+            if (!resumed) {
+                // Fresh recording
+                audioFileManager.startNewRecording(recordId, java.time.Instant.now())
+            }
 
             // Initialize transcript file for incremental saving
             val transcriptDir = File(filesDir, "audio/record_$recordId")
             transcriptDir.mkdirs()
-            val dateStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmm")
-                .withZone(java.time.ZoneId.systemDefault())
-                .format(java.time.Instant.now())
-            transcriptFilePath = File(transcriptDir, "$dateStr.txt").absolutePath
+            // Reuse existing transcript file if resuming, else create new
+            val existingTxtFiles = transcriptDir.listFiles { f -> f.extension == "txt" }
+            if (resumed && existingTxtFiles != null && existingTxtFiles.isNotEmpty()) {
+                transcriptFilePath = existingTxtFiles.last().absolutePath
+                // Reload in-memory transcript from file
+                val existing = try { File(transcriptFilePath).readText() } catch (_: Exception) { "" }
+                if (existing.isNotBlank()) {
+                    mutableTranscript.append(existing)
+                }
+                Log.i(TAG, "Resumed transcript: ${mutableTranscript.length} chars")
+            } else {
+                val dateStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmm")
+                    .withZone(java.time.ZoneId.systemDefault())
+                    .format(java.time.Instant.now())
+                transcriptFilePath = File(transcriptDir, "$dateStr.txt").absolutePath
+            }
 
             startOfflineASR()
 
             // Launch post-recording finalization (waits for recordingJob to complete)
             startFinalization()
         } catch (e: Exception) {
-            Log.e("RecordingService", "Failed to start recording: ${e.message}", e)
+            Log.e(TAG, "Failed to start recording: ${e.message}", e)
             _isRecording.value = false
             releaseWakeLock()
             stopSelf()
@@ -174,38 +249,38 @@ class RecordingService : Service() {
                 try {
                     offlineASRClient.ensureRecognizer(currentOfflineModelQuality)
                     asrReady = true
-                    Log.i("RecordingService", "Offline ASR recognizer ready")
+                    Log.i(TAG, "Offline ASR recognizer ready")
                     // Init VAD — bundled in APK assets, copy to storage if needed
                     asrModelManager.ensureVadModelAvailable()
                     vadActive = offlineASRClient.ensureVad()
                     if (!vadActive) {
                         // Fallback: try download (assets copy may have failed on some devices)
-                        Log.i("RecordingService", "VAD model not available from assets, attempting download...")
+                        Log.i(TAG, "VAD model not available from assets, attempting download...")
                         try {
                             asrModelManager.downloadVadModel().getOrThrow()
                             vadActive = offlineASRClient.ensureVad()
                         } catch (e: Exception) {
-                            Log.w("RecordingService", "VAD model download failed: ${e.message}")
+                            Log.w(TAG, "VAD model download failed: ${e.message}")
                         }
                     }
                     if (vadActive) {
-                        Log.i("RecordingService", "VAD ready, silence will be filtered")
+                        Log.i(TAG, "VAD ready, silence will be filtered")
                     } else {
-                        Log.w("RecordingService", "VAD unavailable, will decode all audio")
+                        Log.w(TAG, "VAD unavailable, will decode all audio")
                     }
                     // Init punctuation model (post-processing, no impact on recording)
                     punctReady = offlineASRClient.ensurePunctuation()
                     if (!punctReady) {
-                        Log.i("RecordingService", "Punctuation model missing, attempting download...")
+                        Log.i(TAG, "Punctuation model missing, attempting download...")
                         try {
                             asrModelManager.downloadPunctuationModel().getOrThrow()
                             punctReady = offlineASRClient.ensurePunctuation()
                         } catch (e: Exception) {
-                            Log.w("RecordingService", "Punctuation model download failed: ${e.message}")
+                            Log.w(TAG, "Punctuation model download failed: ${e.message}")
                         }
                     }
                     if (punctReady) {
-                        Log.i("RecordingService", "Punctuation model ready")
+                        Log.i(TAG, "Punctuation model ready")
                     }
 
                     _statusMessage.value = if (vadActive) {
@@ -214,7 +289,27 @@ class RecordingService : Service() {
                         "模型已就绪，正在转写..."
                     }
                 } catch (e: Exception) {
-                    Log.e("RecordingService", "Offline ASR init failed: ${e.message}", e)
+                    Log.e(TAG, "Offline ASR init failed: ${e.message}", e)
+                }
+            }
+
+            // ── Disk space monitor (P1) ──────────────────────────────────────
+            diskCheckJob = launch {
+                while (isActive) {
+                    delay(DISK_CHECK_INTERVAL_MS)
+                    if (!checkDiskSpace()) {
+                        Log.w(TAG, "磁盘空间不足，自动停止录音")
+                        stopRecording()
+                        break
+                    }
+                }
+            }
+
+            // ── Periodic checkpoint (P2) ─────────────────────────────────────
+            checkpointJob = launch {
+                while (isActive) {
+                    delay(CHECKPOINT_INTERVAL_MS)
+                    saveCheckpoint()
                 }
             }
 
@@ -236,10 +331,10 @@ class RecordingService : Service() {
                                 lastDecodeTime = elapsed
                                 val segments = offlineASRClient.vadDecodeSpeechSegments()
                                 for (text in segments) {
-                                    mutableTranscript.append(text)
+                                    appendToTranscript(text)
+                                    appendTranscriptChunk(text + "\n")
                                 }
                                 if (segments.isNotEmpty()) {
-                                    saveTranscriptToFile()
                                     val full = mutableTranscript.toString()
                                     _transcriptState.value = full.takeLast(RECENT_CHAR_WINDOW)
                                     _statusMessage.value = "正在转写... ${formatDuration(_durationSeconds.value)}"
@@ -261,14 +356,14 @@ class RecordingService : Service() {
                                     val result = offlineASRClient.processPCMChunk(newAudio)
                                     result.onSuccess { text ->
                                         if (text.isNotBlank()) {
-                                            mutableTranscript.append(text)
-                                            saveTranscriptToFile()
+                                            appendToTranscript(text)
+                                            appendTranscriptChunk(text + "\n")
                                             val full = mutableTranscript.toString()
                                             _transcriptState.value = full.takeLast(RECENT_CHAR_WINDOW)
                                             _statusMessage.value = "正在转写... ${formatDuration(_durationSeconds.value)}"
                                         }
                                     }.onFailure { e ->
-                                        Log.w("RecordingService", "Offline decode failed: ${e.message}")
+                                        Log.w(TAG, "Offline decode failed: ${e.message}")
                                     }
                                 }
                             }
@@ -284,10 +379,10 @@ class RecordingService : Service() {
                         offlineASRClient.vadFlush()
                         val segments = offlineASRClient.vadDecodeSpeechSegments()
                         for (text in segments) {
-                            mutableTranscript.append(text)
+                            appendToTranscript(text)
+                            appendTranscriptChunk(text + "\n")
                         }
                         if (segments.isNotEmpty()) {
-                            saveTranscriptToFile()
                             val full = mutableTranscript.toString()
                             _transcriptState.value = full.takeLast(RECENT_CHAR_WINDOW)
                         }
@@ -298,19 +393,19 @@ class RecordingService : Service() {
                             val result = offlineASRClient.processPCMChunk(finalAudio)
                             result.onSuccess { text ->
                                 if (text.isNotBlank()) {
-                                    mutableTranscript.append(text)
-                                    saveTranscriptToFile()
+                                    appendToTranscript(text)
+                                    appendTranscriptChunk(text + "\n")
                                     val full = mutableTranscript.toString()
                                     _transcriptState.value = full.takeLast(RECENT_CHAR_WINDOW)
                                 }
                             }
                         } catch (e: Exception) {
-                            Log.w("RecordingService", "Final pending decode failed: ${e.message}")
+                            Log.w(TAG, "Final pending decode failed: ${e.message}")
                         }
                     }
                 }
             } catch (e: Exception) {
-                Log.e("RecordingService", "Offline ASR error: ${e.message}", e)
+                Log.e(TAG, "Offline ASR error: ${e.message}", e)
             }
         }
     }
@@ -340,31 +435,37 @@ class RecordingService : Service() {
             val transcript = mutableTranscript.toString()
             var finalTranscript = transcript
 
-            Log.i("RecordingService", "Finalizing: transcript.length=${transcript.length}, punctReady=$punctReady")
+            Log.i(TAG, "Finalizing: transcript.length=${transcript.length}, punctReady=$punctReady")
 
             if (finalTranscript.isBlank()) {
                 finalTranscript = "离线转写未完成，请检查模型是否正确安装"
             }
 
-            // Apply offline punctuation (model stays resident in memory)
+            // Apply offline punctuation in chunks (model stays resident in memory)
             if (punctReady && finalTranscript.isNotBlank()
                 && finalTranscript != "离线转写未完成，请检查模型是否正确安装"
             ) {
-                Log.i("RecordingService", "Applying punctuation to transcript (${finalTranscript.length} chars)")
+                Log.i(TAG, "Applying punctuation to transcript (${finalTranscript.length} chars)")
                 _statusMessage.value = "正在添加标点..."
-                finalTranscript = offlineASRClient.addPunctuation(finalTranscript)
-                Log.i("RecordingService", "Punctuation applied: result length=${finalTranscript.length}")
+                finalTranscript = applyPunctuationInChunks(finalTranscript)
+                Log.i(TAG, "Punctuation applied: result length=${finalTranscript.length}")
             } else {
-                Log.i("RecordingService", "Punctuation skipped: punctReady=$punctReady, textBlank=${finalTranscript.isBlank()}")
+                Log.i(TAG, "Punctuation skipped: punctReady=$punctReady, textBlank=${finalTranscript.isBlank()}")
             }
 
             // Model stays loaded in memory for next recording; released only on memory warning or app kill.
 
             _transcriptState.value = finalTranscript
-            saveTranscriptToFile()
+            try {
+                if (transcriptFilePath.isNotBlank()) {
+                    File(transcriptFilePath).writeText(finalTranscript)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to write final transcript: ${e.message}")
+            }
 
             recordRepository.updateTranscriptWithFile(
-                currentRecordId, finalTranscript, transcriptFilePath
+                currentRecordId, transcriptFilePath
             )
             recordRepository.updateTranscriptStatus(
                 currentRecordId,
@@ -384,6 +485,8 @@ class RecordingService : Service() {
     private fun stopRecording() {
         actualStopTime = java.time.Instant.now()
         durationJob?.cancel()
+        diskCheckJob?.cancel()
+        checkpointJob?.cancel()
         audioCapture.stopCapture()
         // Flow ends naturally when audioCapture stops.
         // Cancelling here would truncate the WAV file.
@@ -391,6 +494,53 @@ class RecordingService : Service() {
         _isRecording.value = false
         _statusMessage.value = "录音已结束，正在保存..."
         updateNotification("录音已结束，正在保存...")
+    }
+
+    private fun requestAudioFocus() {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val focusAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+                audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(focusAttributes)
+                    .setOnAudioFocusChangeListener { focusChange ->
+                        when (focusChange) {
+                            AudioManager.AUDIOFOCUS_LOSS -> {
+                                Log.w(TAG, "Audio focus lost — stopping recording")
+                                stopRecording()
+                            }
+                            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                                Log.w(TAG, "Audio focus transient loss")
+                            }
+                            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                                // Continue recording, other app is ducking
+                            }
+                            AudioManager.AUDIOFOCUS_GAIN -> {
+                                // Focus regained — nothing to do
+                            }
+                        }
+                    }
+                    .build()
+                audioManager.requestAudioFocus(audioFocusRequest!!)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to request audio focus: ${e.message}")
+        }
+    }
+
+    private fun abandonAudioFocus() {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to abandon audio focus: ${e.message}")
+        }
+        audioFocusRequest = null
     }
 
     private suspend fun startDurationCounter() {
@@ -401,21 +551,101 @@ class RecordingService : Service() {
             while (isActive) {
                 kotlinx.coroutines.delay(1000)
                 _durationSeconds.value += 1
-                if (!batteryWarned && _durationSeconds.value >= 3600L) {
+                if (!batteryWarned && _durationSeconds.value >= BATTERY_WARNING_SECONDS) {
                     batteryWarned = true
-                    updateNotification("电量提醒：已持续录音1小时，请注意电量")
+                    // Check if battery optimization is disabled — warn if not
+                    val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+                    if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                        updateNotification("⚡ 建议关闭电池优化以确保持续录音")
+                    }
                 }
+                // WakeLock held for entire recording — released only on stop/crash
             }
         }
     }
 
-    private fun saveTranscriptToFile() {
+    private fun appendTranscriptChunk(text: String) {
         try {
-            if (transcriptFilePath.isNotBlank()) {
-                File(transcriptFilePath).writeText(mutableTranscript.toString())
-            }
+            if (transcriptFilePath.isBlank() || text.isEmpty()) return
+            val file = File(transcriptFilePath)
+            if (!file.exists()) file.createNewFile()
+            file.appendText(text)
+            // Ensure transcript is on disk — crash recovery depends on it
+            file.outputStream().use { it.fd.sync() }
         } catch (e: Exception) {
-            Log.e("RecordingService", "Failed to save transcript file: ${e.message}")
+            Log.e(TAG, "Failed to append transcript chunk: ${e.message}")
+        }
+    }
+
+    /** Append text to in-memory transcript with upper-bound protection. */
+    private fun appendToTranscript(text: String) {
+        if (mutableTranscript.length + text.length > MAX_TRANSCRIPT_CHARS) {
+            Log.w(TAG, "转写文本超过上限 (${mutableTranscript.length})，截断旧内容")
+            mutableTranscript.delete(0, mutableTranscript.length / 4)
+        }
+        mutableTranscript.append(text)
+    }
+
+    // ── Disk space check (P1) ─────────────────────────────────────────────
+
+    private fun checkDiskSpace(): Boolean {
+        val usableSpace = filesDir.usableSpace
+        if (usableSpace < MIN_FREE_SPACE_BYTES) {
+            _statusMessage.value = "磁盘空间不足，请停止录音"
+            updateNotification("磁盘空间不足 (剩余 ${usableSpace / 1_048_576}MB)")
+            return false
+        }
+        return true
+    }
+
+    // ── Punctuation chunking (P0) ──────────────────────────────────────────
+
+    private fun applyPunctuationInChunks(rawText: String, chunkSize: Int = PUNCTUATION_CHUNK_SIZE): String {
+        if (!punctReady || rawText.isBlank()) return rawText
+        if (rawText.length <= chunkSize) {
+            return offlineASRClient.addPunctuation(rawText)
+        }
+
+        val result = StringBuilder()
+        var offset = 0
+        while (offset < rawText.length) {
+            val end = minOf(offset + chunkSize, rawText.length)
+            val adjustedEnd = findBestSplitPoint(rawText, offset, end)
+            val chunk = rawText.substring(offset, adjustedEnd)
+            val punctuated = offlineASRClient.addPunctuation(chunk)
+            result.append(punctuated)
+            offset = adjustedEnd
+        }
+        return result.toString()
+    }
+
+    private fun findBestSplitPoint(text: String, start: Int, maxEnd: Int): Int {
+        if (maxEnd >= text.length) return text.length
+        val searchStart = maxOf(start, maxEnd - 500)
+        val searchRange = text.substring(searchStart, maxEnd)
+        val breakChars = charArrayOf('\n', '。', '！', '？', '.', '!', '?')
+        val lastBreak = breakChars.map { searchRange.lastIndexOf(it) }.maxOrNull() ?: -1
+        return if (lastBreak >= 0) searchStart + lastBreak + 1 else maxEnd
+    }
+
+    // ── Checkpoint (P2) ───────────────────────────────────────────────────
+
+    private suspend fun saveCheckpoint() {
+        try {
+            // Force-flush audio data to disk and get persisted byte count
+            val pcmBytes = audioFileManager.flushAndCheckpoint()
+            val checkpoint = RecordingCheckpoint(
+                recordId = currentRecordId,
+                startTime = wakeLockStartTime,
+                lastTranscriptLength = mutableTranscript.length,
+                pcmBytesWritten = pcmBytes
+            )
+            val json = gson.toJson(checkpoint)
+            val checkpointDir = File(filesDir, "checkpoints")
+            checkpointDir.mkdirs()
+            File(checkpointDir, "record_${currentRecordId}.json").writeText(json)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save checkpoint: ${e.message}")
         }
     }
 
@@ -474,6 +704,7 @@ class RecordingService : Service() {
             if (it.isHeld) it.release()
         }
         wakeLock = null
+        abandonAudioFocus()
     }
 
     override fun onDestroy() {

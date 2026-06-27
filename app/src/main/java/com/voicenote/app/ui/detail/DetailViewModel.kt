@@ -50,6 +50,7 @@ data class DetailUiState(
     val isDeleting: Boolean = false,
     val isDeleted: Boolean = false,
     val showTranscriptPreview: Boolean = false,
+    val transcriptPreviewText: String = "",
     val isRetryingTranscript: Boolean = false,
     val retryProgress: String = ""
 )
@@ -407,11 +408,21 @@ class DetailViewModel @Inject constructor(
     // --- Transcript ---
 
     fun openTranscriptPreview() {
-        _uiState.value = _uiState.value.copy(showTranscriptPreview = true)
+        val path = _uiState.value.record?.transcriptFilePath ?: return
+        if (path.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val text = try {
+                File(path).readText()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to read transcript file: ${e.message}")
+                ""
+            }
+            _uiState.value = _uiState.value.copy(showTranscriptPreview = true, transcriptPreviewText = text)
+        }
     }
 
     fun dismissTranscriptPreview() {
-        _uiState.value = _uiState.value.copy(showTranscriptPreview = false)
+        _uiState.value = _uiState.value.copy(showTranscriptPreview = false, transcriptPreviewText = "")
     }
 
     fun showDeleteConfirm() {
@@ -430,7 +441,7 @@ class DetailViewModel @Inject constructor(
             retryTranscriptJob?.cancel()
             retryTranscriptJob = null
             audioImporter.cancelProcessing(record.id)
-            audioFileManager.deleteAudioFile(record.audioFilePath)
+            audioFileManager.deleteAudioFile(record.audioFilePath, record.transcriptFilePath)
             recordRepository.deleteRecord(record.id)
             _uiState.value = _uiState.value.copy(isDeleted = true, isDeleting = false)
         }
@@ -468,7 +479,7 @@ class DetailViewModel @Inject constructor(
                         val dateStr = transcriptDateFormatter.format(java.time.Instant.now())
                         val txtFile = File(dir, "$dateStr.txt")
                         txtFile.writeText(text)
-                        recordRepository.updateTranscriptWithFile(record.id, text, txtFile.absolutePath)
+                        recordRepository.updateTranscriptWithFile(record.id, txtFile.absolutePath)
                         recordRepository.updateTranscriptStatus(record.id, ProcessingStatus.COMPLETED)
                         _uiState.value = _uiState.value.copy(isRetryingTranscript = false, retryProgress = "")
                         refreshRecord(record.id)

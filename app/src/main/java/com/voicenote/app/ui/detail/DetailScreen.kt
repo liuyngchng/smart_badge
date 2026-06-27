@@ -214,7 +214,7 @@ fun DetailScreen(
 
     // Transcript preview dialog
     if (uiState.showTranscriptPreview) {
-        val transcriptText = uiState.record?.transcriptText.orEmpty()
+        val transcriptText = uiState.transcriptPreviewText
         AlertDialog(
             onDismissRequest = viewModel::dismissTranscriptPreview,
             title = { Text("转写内容") },
@@ -374,8 +374,6 @@ private fun TranscriptTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        val text = record.transcriptText
-
         when (record.transcriptStatus) {
             com.voicenote.app.domain.model.ProcessingStatus.PENDING -> {
                 val statusMsg by com.voicenote.app.core.service.RecordingService.statusMessage.collectAsState()
@@ -416,7 +414,7 @@ private fun TranscriptTab(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("转写失败", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            text.ifBlank { "服务暂时不可用，请重试" },
+                            "服务暂时不可用，请重试",
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                             style = MaterialTheme.typography.bodySmall
                         )
@@ -425,12 +423,8 @@ private fun TranscriptTab(
             }
             com.voicenote.app.domain.model.ProcessingStatus.COMPLETED -> {
                 // File card — tap to preview full text
-                if (text.isNotBlank()) {
-                    val fileName = if (record.transcriptFilePath.isNotBlank()) {
-                        File(record.transcriptFilePath).name
-                    } else {
-                        "转写内容.txt"
-                    }
+                if (record.transcriptFilePath.isNotBlank()) {
+                    val fileName = File(record.transcriptFilePath).name
                     Card(
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth().clickable { onPreview() }

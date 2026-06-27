@@ -28,7 +28,7 @@ interface VoiceRecordDao {
     @Query("SELECT * FROM voice_records ORDER BY startTime DESC")
     suspend fun getAll(): List<VoiceRecordEntity>
 
-    @Query("SELECT * FROM voice_records WHERE title LIKE '%' || :query || '%' OR memo LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%' OR transcriptText LIKE '%' || :query || '%' ORDER BY startTime DESC")
+    @Query("SELECT * FROM voice_records WHERE title LIKE '%' || :query || '%' OR memo LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%' ORDER BY startTime DESC")
     fun searchFlow(query: String): Flow<List<VoiceRecordEntity>>
 
     @Query("SELECT * FROM voice_records WHERE startTime BETWEEN :from AND :to ORDER BY startTime DESC")
