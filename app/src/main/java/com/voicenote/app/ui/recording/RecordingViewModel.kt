@@ -104,30 +104,7 @@ class RecordingViewModel @Inject constructor(
             return
         }
 
-        // Observe service state
-        viewModelScope.launch {
-            RecordingService.transcriptState.collect { text ->
-                _uiState.value = _uiState.value.copy(transcript = text)
-            }
-        }
-        viewModelScope.launch {
-            RecordingService.durationSeconds.collect { seconds ->
-                _uiState.value = _uiState.value.copy(durationSeconds = seconds)
-            }
-        }
-        viewModelScope.launch {
-            RecordingService.isRecording.collect { recording ->
-                _uiState.value = _uiState.value.copy(isRecording = recording)
-                if (!recording) {
-                    _uiState.value = _uiState.value.copy(isStopping = false)
-                }
-            }
-        }
-        viewModelScope.launch {
-            RecordingService.statusMessage.collect { msg ->
-                _uiState.value = _uiState.value.copy(statusMessage = msg)
-            }
-        }
+        observeServiceState()
     }
 
     fun stopRecording() {
@@ -160,6 +137,40 @@ class RecordingViewModel @Inject constructor(
         }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
+    }
+
+    fun reconnect(recordId: Long) {
+        _uiState.value = _uiState.value.copy(
+            currentRecordId = recordId,
+            isRecording = true
+        )
+        observeServiceState()
+    }
+
+    private fun observeServiceState() {
+        viewModelScope.launch {
+            RecordingService.transcriptState.collect { text ->
+                _uiState.value = _uiState.value.copy(transcript = text)
+            }
+        }
+        viewModelScope.launch {
+            RecordingService.durationSeconds.collect { seconds ->
+                _uiState.value = _uiState.value.copy(durationSeconds = seconds)
+            }
+        }
+        viewModelScope.launch {
+            RecordingService.isRecording.collect { recording ->
+                _uiState.value = _uiState.value.copy(isRecording = recording)
+                if (!recording) {
+                    _uiState.value = _uiState.value.copy(isStopping = false)
+                }
+            }
+        }
+        viewModelScope.launch {
+            RecordingService.statusMessage.collect { msg ->
+                _uiState.value = _uiState.value.copy(statusMessage = msg)
+            }
+        }
     }
 
     companion object {

@@ -59,15 +59,20 @@ private val RecordingRed = Color(0xFFD32F2F)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecordingScreen(
+    reconnectRecordId: Long = 0,
     onBack: () -> Unit,
     onRecordComplete: (Long) -> Unit,
     viewModel: RecordingViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // Auto-start recording on entry
+    // Reconnect to existing recording or start fresh
     LaunchedEffect(Unit) {
-        viewModel.startRecording()
+        if (reconnectRecordId > 0) {
+            viewModel.reconnect(reconnectRecordId)
+        } else {
+            viewModel.startRecording()
+        }
     }
 
     Scaffold(

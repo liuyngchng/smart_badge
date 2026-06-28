@@ -91,8 +91,8 @@ class RecordingService : Service() {
         // - During recording: decode only new audio chunks incrementally.
         // - Screen shows scrolling recent-text window (last N chars).
         // - Transcript file appends incrementally; no full-file re-decode needed.
-        private const val DECODE_INTERVAL_MS = 3_000L
-        private const val RECENT_CHAR_WINDOW = 500      // scrolling subtitle window
+        private const val DECODE_INTERVAL_MS = 5_000L
+        private const val RECENT_CHAR_WINDOW = 100      // scrolling subtitle window
 
         // Long-recording optimization
         private const val DISK_CHECK_INTERVAL_MS = 300_000L   // 5 minutes
@@ -101,6 +101,8 @@ class RecordingService : Service() {
         private const val PUNCTUATION_CHUNK_SIZE = 5000      // chars per punctuation batch
         private const val CHECKPOINT_INTERVAL_MS = 120_000L  // 2 minutes
         private const val BATTERY_WARNING_SECONDS = 3600L    // 1 hour
+        private const val ACTIVE_RECORDING_FILE = "active_recording.txt"
+        private const val CHECKPOINTS_DIR = "checkpoints"
 
         // Observables for UI binding
         private val _transcriptState = MutableStateFlow("")
@@ -224,6 +226,9 @@ class RecordingService : Service() {
             }
 
             startOfflineASR()
+
+            // Persist active recording marker for crash recovery
+            writeActiveRecordingMarker(recordId)
 
             // Launch post-recording finalization (waits for recordingJob to complete)
             startFinalization()
@@ -476,6 +481,7 @@ class RecordingService : Service() {
             )
 
             _isRecording.value = false
+            deleteActiveRecordingMarker()
             stopForeground(STOP_FOREGROUND_REMOVE)
             releaseWakeLock()
             stopSelf()
@@ -626,6 +632,27 @@ class RecordingService : Service() {
         val breakChars = charArrayOf('\n', '。', '！', '？', '.', '!', '?')
         val lastBreak = breakChars.map { searchRange.lastIndexOf(it) }.maxOrNull() ?: -1
         return if (lastBreak >= 0) searchStart + lastBreak + 1 else maxEnd
+    }
+
+    private fun writeActiveRecordingMarker(recordId: Long) {
+        try {
+            File(filesDir, ACTIVE_RECORDING_FILE).writeText(recordId.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write active recording marker: ${e.message}")
+        }
+    }
+
+    private fun deleteActiveRecordingMarker() {
+        try {
+            val marker = File(filesDir, ACTIVE_RECORDING_FILE)
+            if (marker.exists()) marker.delete()
+            val checkpointDir = File(filesDir, CHECKPOINTS_DIR)
+            if (checkpointDir.isDirectory) {
+                checkpointDir.listFiles()?.forEach { it.delete() }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to delete active recording marker: ${e.message}")
+        }
     }
 
     // ── Checkpoint (P2) ───────────────────────────────────────────────────
