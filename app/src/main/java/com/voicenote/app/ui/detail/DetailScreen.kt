@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.VerticalScrollbar
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -219,13 +222,20 @@ fun DetailScreen(
             onDismissRequest = viewModel::dismissTranscriptPreview,
             title = { Text("转写内容") },
             text = {
+                val scrollState = rememberScrollState()
                 SelectionContainer {
-                    Column(
-                        modifier = Modifier.verticalScroll(rememberScrollState())
-                    ) {
-                        Text(
-                            transcriptText.ifBlank { "转写内容为空" },
-                            style = MaterialTheme.typography.bodyMedium
+                    Box {
+                        Column(
+                            modifier = Modifier.verticalScroll(scrollState)
+                        ) {
+                            Text(
+                                transcriptText.ifBlank { "转写内容为空" },
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        VerticalScrollbar(
+                            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                            adapter = rememberScrollbarAdapter(scrollState)
                         )
                     }
                 }
