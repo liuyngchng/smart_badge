@@ -246,11 +246,6 @@ private fun ModelMissingBanner(onGoToSettings: () -> Unit) {
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
-                Text(
-                    "请先下载语音识别模型才能开始录音",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
-                )
             }
             TextButton(onClick = onGoToSettings) {
                 Icon(

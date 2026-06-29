@@ -40,7 +40,7 @@ data class SettingsUiState(
     val testResults: List<TestResult> = emptyList(),
     val showResults: Boolean = false,
     val saveCount: Int = 0,
-    val punctModel: ModelInfo = ModelInfo("标点模型", "punct_ct_transformer.onnx", false, 0)
+    val punctModel: ModelInfo = ModelInfo("标点恢复模型", "punct_ct_transformer.onnx", false, 0)
 )
 
 @HiltViewModel
@@ -94,7 +94,7 @@ class SettingsViewModel @Inject constructor(
         val opLabel = if (punctIsDownload) "下载" else "导入"
         _uiState.value = _uiState.value.copy(
             punctModel = ModelInfo(
-                name = "标点模型",
+                name = "标点恢复模型",
                 fileName = "punct_ct_transformer.onnx",
                 isDownloaded = punctFile.exists(),
                 fileSize = if (punctFile.exists()) punctFile.length() else 0,

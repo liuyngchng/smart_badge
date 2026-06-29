@@ -24,8 +24,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,14 +33,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -65,6 +66,7 @@ fun RecordingScreen(
     viewModel: RecordingViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // Reconnect to existing recording or start fresh
     LaunchedEffect(Unit) {
@@ -72,6 +74,17 @@ fun RecordingScreen(
             viewModel.reconnect(reconnectRecordId)
         } else {
             viewModel.startRecording()
+        }
+    }
+
+    // Battery optimization check — shown as Snackbar on recording start
+    LaunchedEffect(Unit) {
+        viewModel.checkBatteryOptimization()
+    }
+    LaunchedEffect(uiState.showBatteryOptDialog) {
+        if (uiState.showBatteryOptDialog) {
+            snackbarHostState.showSnackbar("长时间录音需要开启电池优化")
+            viewModel.dismissBatteryOptDialog()
         }
     }
 
@@ -93,6 +106,16 @@ fun RecordingScreen(
                     navigationIconContentColor = Color.White
                 )
             )
+        },
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = MaterialTheme.colorScheme.inverseSurface,
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
         }
     ) { padding ->
         RecordingContent(
@@ -105,45 +128,6 @@ fun RecordingScreen(
             if (!uiState.isRecording && !uiState.isStopping && uiState.currentRecordId > 0) {
                 onRecordComplete(uiState.currentRecordId)
             }
-        }
-
-        // Battery optimization check — shown once on recording start
-        LaunchedEffect(Unit) {
-            viewModel.checkBatteryOptimization()
-        }
-
-        if (uiState.showBatteryOptDialog) {
-            AlertDialog(
-                onDismissRequest = { viewModel.dismissBatteryOptDialog() },
-                icon = {
-                    Icon(
-                        Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = Color(0xFFFFA000)
-                    )
-                },
-                title = {
-                    Text("建议关闭电池优化")
-                },
-                text = {
-                    Text(
-                        "长时间录音需要应用在后台持续运行。关闭电池优化可以防止系统在录音过程中意外中断服务，确保录音完整性。"
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        viewModel.openBatteryOptimizationSettings()
-                        viewModel.dismissBatteryOptDialog()
-                    }) {
-                        Text("去设置")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.dismissBatteryOptDialog() }) {
-                        Text("暂不设置")
-                    }
-                }
-            )
         }
     }
 }

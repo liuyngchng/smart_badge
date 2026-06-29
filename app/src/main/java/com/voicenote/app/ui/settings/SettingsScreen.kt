@@ -60,7 +60,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.voicenote.app.BuildConfig
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import com.voicenote.app.core.asr.ASRModelManager
 import com.voicenote.app.core.asr.OfflineASRClient
 import dagger.hilt.EntryPoint
@@ -224,8 +227,19 @@ fun SettingsScreen(
             }
 
             // Version
+            val context = LocalContext.current
+            val appVersion = remember {
+                try {
+                    val apkPath = context.packageManager.getApplicationInfo(context.packageName, 0).sourceDir
+                    val apkFile = File(apkPath)
+                    val fmt = SimpleDateFormat("yyyyMMdd.HHmm", Locale.US)
+                    fmt.format(Date(apkFile.lastModified()))
+                } catch (e: Exception) {
+                    "unknown"
+                }
+            }
             Text(
-                text = "版本 ${BuildConfig.BUILD_TIMESTAMP}",
+                text = "版本：$appVersion",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
                 modifier = Modifier
