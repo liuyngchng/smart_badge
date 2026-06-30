@@ -221,6 +221,24 @@ final class OfflineASRClient {
         }
     }
 
+    /// 异步版: 将 VAD accept 派发到 inferenceQueue，避免阻塞调用线程（MainActor）
+    func vadAcceptWaveformAsync(samples: [Float]) async {
+        guard vadReady, vad != nil else { return }
+        let sampleCount = Int32(samples.count)
+        await withCheckedContinuation { continuation in
+            inferenceQueue.async {
+                guard let vad = self.vad else {
+                    continuation.resume()
+                    return
+                }
+                samples.withUnsafeBufferPointer { buf in
+                    SherpaOnnxVoiceActivityDetectorAcceptWaveform(vad, buf.baseAddress, sampleCount)
+                }
+                continuation.resume()
+            }
+        }
+    }
+
     /// VAD 是否有已完成的语音段
     var vadHasSpeechSegment: Bool {
         guard vadReady, let vad else { return false }
@@ -282,6 +300,22 @@ final class OfflineASRClient {
         guard vadReady, let vad else { return }
         SherpaOnnxVoiceActivityDetectorFlush(vad)
         Log.asr("VAD flush 完成")
+    }
+
+    /// 异步版: 派发到 inferenceQueue，与 vadDecodeSpeechSegments 串行化
+    func vadFlushAsync() async {
+        guard vadReady, vad != nil else { return }
+        await withCheckedContinuation { continuation in
+            inferenceQueue.async {
+                guard let vad = self.vad else {
+                    continuation.resume()
+                    return
+                }
+                SherpaOnnxVoiceActivityDetectorFlush(vad)
+                Log.asr("VAD flush 完成")
+                continuation.resume()
+            }
+        }
     }
 
     // MARK: - 生命周期

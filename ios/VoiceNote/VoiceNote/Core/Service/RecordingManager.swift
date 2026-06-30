@@ -162,36 +162,52 @@ final class RecordingManager: ObservableObject {
 
     private func performRecording() {
         let audioCapture = container.audioCapture
+        let offlineClient = container.offlineASRClient
 
-        audioStreamTask = Task {
+        // 使用 Task.detached 让音频处理循环跑在后台线程，
+        // 避免 MainActor 被 VAD/ASR 推理产生的级联积压卡死。
+        let task = Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+
             do {
                 let stream = try audioCapture.startCapturing()
                 Log.recording("音频流已启动，开始接收数据...")
                 var totalBytes = 0
                 var lastVadDecodeTime = Date()
 
+                // 读取一次 MainActor 状态
+                let vadActive = await MainActor.run { self.vadActive }
+                let chunkDuration = await MainActor.run { self.chunkDurationSeconds }
+
                 for try await audioData in stream {
-                    // 写文件（用于最终回放）
-                    audioDataWritable?(audioData)
+                    // 协作式取消：点击结束按钮后可快速退出循环
+                    try Task.checkCancellation()
+
+                    // 写文件（closure 通过 MainActor 获取）
+                    await MainActor.run { [audioData] in
+                        self.audioDataWritable?(audioData)
+                    }
                     totalBytes += audioData.count
 
-                    // 计算实时音量 (RMS)，用于波形可视化
-                    let floats = pcmDataToFloats(audioData)
+                    // 计算实时音量 (RMS) — 纯计算，后台线程安全
+                    let floats = self.pcmDataToFloats(audioData)
                     let sumSquares = floats.reduce(0) { $0 + $1 * $1 }
                     let rms = sqrt(sumSquares / Float(floats.count))
                     let level = min(1.0, rms * 12.0)
-                    Task { @MainActor in
+
+                    // 更新波形到 MainActor
+                    await MainActor.run { [level] in
                         self.audioLevel = level
                     }
 
                     if vadActive {
-                        // VAD 模式: 持续 feed VAD，每 3 秒解码语音段
-                        container.offlineASRClient.vadAcceptWaveform(samples: floats)
+                        // VAD accept 异步化: 派发到 inferenceQueue，不阻塞后台线程
+                        await offlineClient.vadAcceptWaveformAsync(samples: floats)
 
                         let elapsed = Date().timeIntervalSince(lastVadDecodeTime)
                         if elapsed >= 3.0 {
                             lastVadDecodeTime = Date()
-                            let segments = await container.offlineASRClient.vadDecodeSpeechSegments()
+                            let segments = await offlineClient.vadDecodeSpeechSegments()
                             if !segments.isEmpty {
                                 await MainActor.run {
                                     for text in segments {
@@ -203,33 +219,35 @@ final class RecordingManager: ObservableObject {
 
                         // 每 10 秒打一次日志（含 VAD 状态）
                         if totalBytes % 320_000 < audioData.count {
-                            let detected = container.offlineASRClient.vadIsDetected ? "语音" : "静音"
+                            let detected = offlineClient.vadIsDetected ? "语音" : "静音"
                             Log.recording("录音中: 已写入 \(totalBytes / 1000)KB [VAD: \(detected)]")
                         }
                     } else {
-                        // 非 VAD 模式: 积累到 PCM buffer，按时间分块
-                        pcmBuffer.append(audioData)
+                        // 非 VAD 模式: 通过 MainActor 累积 PCM 并按时间分块
+                        await MainActor.run { [audioData] in
+                            self.pcmBuffer.append(audioData)
 
-                        // 每 10 秒打一次日志
-                        if totalBytes % 320_000 < audioData.count {
-                            Log.recording("录音中: 已写入 \(totalBytes / 1000)KB, buffer=\(pcmBuffer.count / 1000)KB")
-                        }
-
-                        let bufferDuration = Double(pcmBuffer.count) / 32000.0
-                        if bufferDuration >= chunkDurationSeconds {
-                            processCurrentChunk()
+                            let bufferDuration = Double(self.pcmBuffer.count) / 32000.0
+                            if bufferDuration >= chunkDuration {
+                                self.processCurrentChunk()
+                            }
                         }
                     }
                 }
                 Log.recording("音频流结束，总计写入 \(totalBytes / 1000)KB")
+            } catch is CancellationError {
+                Log.recording("音频流被取消")
             } catch {
                 Log.recording("Audio capture error: \(error)")
             }
         }
+
+        audioStreamTask = task
     }
 
     /// 将 PCM Data 转换为 Float 数组 (16kHz/16bit/mono → [-1, 1])
-    private func pcmDataToFloats(_ data: Data) -> [Float] {
+    /// nonisolated: 纯计算函数，可从任意 context 调用
+    nonisolated private func pcmDataToFloats(_ data: Data) -> [Float] {
         let sampleCount = data.count / MemoryLayout<Int16>.size
         return data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) in
             let int16s = ptr.bindMemory(to: Int16.self)
@@ -365,6 +383,11 @@ final class RecordingManager: ObservableObject {
         phase = .stopping
         durationTask?.cancel()
         diskCheckTask?.cancel()
+
+        // 1. 先取消音频处理 Task，让 for-try-await 循环通过 Task.checkCancellation() 退出
+        audioStreamTask?.cancel()
+
+        // 2. 再停止音频引擎（tap removed, engine stopped）
         container.audioCapture.stop()
 
         // 立即标记录音结束 → UI 马上返回
@@ -373,9 +396,9 @@ final class RecordingManager: ObservableObject {
         audioLevel = 0.0
 
         if vadActive {
-            // VAD 模式: flush 尾部语音段
-            container.offlineASRClient.vadFlush()
+            // VAD 模式: 异步 flush + 解码尾部语音段（统一走 inferenceQueue，线程安全）
             Task {
+                await container.offlineASRClient.vadFlushAsync()
                 let finalSegments = await container.offlineASRClient.vadDecodeSpeechSegments()
                 if !finalSegments.isEmpty {
                     await MainActor.run {
@@ -388,13 +411,11 @@ final class RecordingManager: ObservableObject {
                     self.finalizeTranscriptIfNeeded()
                 }
             }
-            audioStreamTask?.cancel()
         } else {
-            // 非 VAD 模式: 处理最后一段残片（不足 5min 的部分）
+            // 非 VAD 模式: 处理最后一段残片（不足 15s 的部分）
             if !pcmBuffer.isEmpty {
                 processCurrentChunk()
             }
-            audioStreamTask?.cancel()
         }
 
         // 音频定稿：后台执行，不阻塞 UI
