@@ -80,6 +80,11 @@ struct RecordingView: View {
                 }
                 Spacer()
             } else {
+                // 音频波形可视化
+                AudioWaveformView(levels: viewModel.audioLevelHistory)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
@@ -259,6 +264,57 @@ private struct NavigationBarTinter: UIViewControllerRepresentable {
                 ?? UINavigationBarAppearance()
             nc.navigationBar.scrollEdgeAppearance = originalScrollEdgeAppearance
             nc.navigationBar.tintColor = originalTintColor
+        }
+    }
+}
+
+// MARK: - 音频波形
+
+private struct AudioWaveformView: View {
+    let levels: [Float]
+    private let barCount = 42
+    private let maxHeight: CGFloat = 48
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<barCount, id: \.self) { index in
+                WaveformBar(level: levelForBar(index))
+            }
+        }
+        .frame(height: maxHeight)
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private func levelForBar(_ index: Int) -> Float {
+        let historyIndex = levels.count - barCount + index
+        guard historyIndex >= 0, historyIndex < levels.count else {
+            return 0.03 // 最小高度，保持波形始终可见
+        }
+        return max(0.03, levels[historyIndex])
+    }
+}
+
+private struct WaveformBar: View {
+    let level: Float
+
+    /// 用平方根曲线提升中低音量的视觉高度，使波形更灵敏
+    private var scaledHeight: CGFloat {
+        let boosted = sqrt(max(0, level))       // sqrt 拉伸中低段
+        return max(4, CGFloat(boosted) * 44)
+    }
+
+    var body: some View {
+        Capsule()
+            .fill(colorForLevel(level))
+            .frame(width: 3, height: scaledHeight)
+            .animation(.spring(response: 0.25, dampingFraction: 0.5), value: level)
+    }
+
+    private func colorForLevel(_ level: Float) -> Color {
+        switch level {
+        case 0..<0.25:  return .green
+        case 0.25..<0.5: return .yellow
+        default:         return .red
         }
     }
 }

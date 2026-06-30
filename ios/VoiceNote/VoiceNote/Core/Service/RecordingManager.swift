@@ -13,6 +13,7 @@ final class RecordingManager: ObservableObject {
     @Published var transcript: String = ""
     @Published var durationSeconds: TimeInterval = 0
     @Published var phase: RecordingPhase = .idle
+    @Published var audioLevel: Float = 0.0
 
     enum RecordingPhase {
         case idle
@@ -174,9 +175,17 @@ final class RecordingManager: ObservableObject {
                     audioDataWritable?(audioData)
                     totalBytes += audioData.count
 
+                    // 计算实时音量 (RMS)，用于波形可视化
+                    let floats = pcmDataToFloats(audioData)
+                    let sumSquares = floats.reduce(0) { $0 + $1 * $1 }
+                    let rms = sqrt(sumSquares / Float(floats.count))
+                    let level = min(1.0, rms * 12.0)
+                    Task { @MainActor in
+                        self.audioLevel = level
+                    }
+
                     if vadActive {
                         // VAD 模式: 持续 feed VAD，每 3 秒解码语音段
-                        let floats = pcmDataToFloats(audioData)
                         container.offlineASRClient.vadAcceptWaveform(samples: floats)
 
                         let elapsed = Date().timeIntervalSince(lastVadDecodeTime)
@@ -361,6 +370,7 @@ final class RecordingManager: ObservableObject {
         // 立即标记录音结束 → UI 马上返回
         isRecording = false
         phase = .idle
+        audioLevel = 0.0
 
         if vadActive {
             // VAD 模式: flush 尾部语音段

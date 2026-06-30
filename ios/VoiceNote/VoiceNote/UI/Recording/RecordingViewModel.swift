@@ -13,6 +13,7 @@ final class RecordingViewModel: ObservableObject {
     @Published var isStarting = false
     @Published var isStopping = false
     @Published var errorMessage: String?
+    @Published var audioLevelHistory: [Float] = []
 
     /// 录音界面仅展示最后 200 字符，避免长录音全文渲染
     var displayTranscript: String {
@@ -124,6 +125,19 @@ final class RecordingViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] phase in
                 self?.phase = phase
+            }
+            .store(in: &cancellables)
+
+        recordingManager.$audioLevel
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] level in
+                guard let self else { return }
+                var history = self.audioLevelHistory
+                history.append(level)
+                if history.count > 50 {
+                    history.removeFirst(history.count - 50)
+                }
+                self.audioLevelHistory = history
             }
             .store(in: &cancellables)
     }
