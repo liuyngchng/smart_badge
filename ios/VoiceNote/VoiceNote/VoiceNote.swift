@@ -34,8 +34,6 @@ final class AppState: ObservableObject {
     @Published var modelStatus: ModelStatus = .unknown
     /// 模型加载错误描述
     @Published var modelLoadError: String?
-    /// 是否需要引导用户导入模型（弹 alert）
-    @Published var needsModelGuidance = false
 
     /// 在 app 启动时调用，加载离线模型（ASR + VAD + 标点）
     func loadModelOnStartup(container: AppContainer) {
@@ -59,8 +57,7 @@ final class AppState: ObservableObject {
               FileManager.default.fileExists(atPath: ASRModelManager.tokensFilePath().path)
         else {
             modelStatus = .missing
-            needsModelGuidance = true
-            appLog("app", "[App] 离线语音模型未下载，需要引导用户导入")
+            appLog("app", "[App] 离线语音模型未下载")
             return
         }
 
@@ -68,7 +65,6 @@ final class AppState: ObservableObject {
         let asrClient = container.offlineASRClient
         if asrClient.isAvailable, asrClient.loadedQuality == quality {
             modelStatus = .ready
-            needsModelGuidance = false
             appLog("app", "[App] 离线模型已加载，跳过")
             return
         }
@@ -92,7 +88,6 @@ final class AppState: ObservableObject {
 
                 await MainActor.run {
                     self.modelStatus = .ready
-                    self.needsModelGuidance = false
                     self.modelLoadError = nil
                     appLog("app", "[App] 全部模型加载完成")
                 }
@@ -148,7 +143,6 @@ private struct RootView: View {
     @State private var showSettings = false
     @State private var showDetail = false
     @State private var detailId: UUID?
-    @State private var showModelGuide = false
 
     var body: some View {
         NavigationView {
@@ -163,24 +157,6 @@ private struct RootView: View {
         .onAppear {
             appState.loadModelOnStartup(container: container)
             appState.refreshModelStatus(container: container)
-        }
-        .alert(isPresented: $showModelGuide) {
-            Alert(
-                title: Text("需要导入语音识别模型"),
-                message: Text("检测到离线语音模型尚未下载或导入。\n\n请前往「设置」页面下载或导入 SenseVoice 模型，否则无法进行语音识别。"),
-                primaryButton: .default(Text("前往设置")) {
-                    // 延迟导航，等待 alert 关闭动画完成，避免与 NavigationLink push 冲突
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        showSettings = true
-                    }
-                },
-                secondaryButton: .cancel(Text("稍后"))
-            )
-        }
-        .onChange(of: appState.needsModelGuidance) { needs in
-            if needs {
-                showModelGuide = true
-            }
         }
     }
 
@@ -244,15 +220,7 @@ private struct RootView: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
-                    if showModelGuide {
-                        // alert 正在显示，先关闭再延迟导航，避免转场冲突
-                        showModelGuide = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            showSettings = true
-                        }
-                    } else {
-                        showSettings = true
-                    }
+                    showSettings = true
                 } label: {
                     Image(systemName: "gearshape")
                 }

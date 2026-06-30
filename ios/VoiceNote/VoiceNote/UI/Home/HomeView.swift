@@ -83,7 +83,7 @@ struct HomeView: View {
                     Text("离线模型未安装")
                         .font(.subheadline)
                         .bold()
-                    Text("请先下载 SenseVoice 语音识别模型")
+                    Text("请先下载相关模型")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
